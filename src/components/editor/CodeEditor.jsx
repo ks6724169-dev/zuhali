@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   PanelLeft, SquarePen, Plus, FolderOpen,
-  Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X
+  Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X, Code2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -246,15 +246,15 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
         <div className="code-header-spacer" />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Live Preview Button */}
+          {/* Live Preview / Code View Toggle Button */}
           <button
             type="button"
             className={`code-header-tool-btn ${showPreview ? 'active' : ''}`}
-            title="Live Preview"
+            title={showPreview ? 'Return to Code Editor' : 'Live Preview'}
             onClick={() => setShowPreview((v) => !v)}
           >
-            <Play size={14} />
-            <span>Preview</span>
+            {showPreview ? <Code2 size={14} /> : <Play size={14} />}
+            <span>{showPreview ? 'Code View' : 'Preview'}</span>
           </button>
 
           {/* Terminal Button */}
@@ -286,8 +286,8 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
       {/* Main Body */}
       <div className="code-editor-body">
-        {/* Left Sidebar (VS Code Style Explorer) */}
-        {explorerOpen && (
+        {/* Left Sidebar (VS Code Style Explorer - Auto-closed in Preview mode) */}
+        {!showPreview && explorerOpen && (
           <aside className="code-editor-sidebar">
             <div className="explorer-content-wrap">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 8px' }}>
@@ -411,10 +411,52 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
           </aside>
         )}
 
-        {/* Right Area: Editor + Split Live Preview */}
-        <main className="code-editor-main" style={{ display: 'flex', flexDirection: 'row' }}>
-          {/* Code Editor Area */}
-          <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* When showPreview is TRUE: Code screen & sidebar auto-close, only Preview is shown */}
+        {showPreview ? (
+          <div className="code-editor-preview-pane">
+            <div className="preview-pane-header">
+              <div className="preview-url-bar">
+                <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 10 }}>●</span>
+                <span>http://localhost:3000/</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  title="Reload Preview"
+                  onClick={() => setPreviewKey((k) => k + 1)}
+                  style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 4 }}
+                >
+                  <RefreshCw size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="code-header-tool-btn"
+                  onClick={() => setShowPreview(false)}
+                  style={{ height: 30, fontSize: 12, padding: '0 12px', gap: 6 }}
+                >
+                  <Code2 size={14} />
+                  <span>Back to Code</span>
+                </button>
+                <button
+                  type="button"
+                  title="Close Preview"
+                  onClick={() => setShowPreview(false)}
+                  style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 4 }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </div>
+            <iframe
+              key={previewKey}
+              title="Live Preview"
+              className="preview-iframe-wrapper"
+              srcDoc={previewHtml}
+              sandbox="allow-scripts allow-forms allow-modals"
+            />
+          </div>
+        ) : (
+          <main className="code-editor-main">
             {activeFile ? (
               <>
                 <div className="code-editor-tabbar">
@@ -495,45 +537,8 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Live Preview Pane (Live Web Execution) */}
-          {showPreview && (
-            <div className="code-editor-preview-pane">
-              <div className="preview-pane-header">
-                <div className="preview-url-bar">
-                  <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 10 }}>●</span>
-                  <span>http://localhost:3000/</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button
-                    type="button"
-                    title="Reload Preview"
-                    onClick={() => setPreviewKey((k) => k + 1)}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 4 }}
-                  >
-                    <RefreshCw size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    title="Close Preview"
-                    onClick={() => setShowPreview(false)}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 4 }}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              </div>
-              <iframe
-                key={previewKey}
-                title="Live Preview"
-                className="preview-iframe-wrapper"
-                srcDoc={previewHtml}
-                sandbox="allow-scripts allow-forms allow-modals"
-              />
-            </div>
-          )}
-        </main>
+          </main>
+        )}
       </div>
 
       {/* Hidden local file picker */}
