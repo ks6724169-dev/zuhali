@@ -21,6 +21,7 @@ class Settings:
         "http://localhost:5173",
         "http://localhost:3000",
         "https://zuhali.onrender.com",
+        "https://zuhali.vercel.app",
         "*"
     ]
     
@@ -42,6 +43,18 @@ class Settings:
 
     # 4. BharatRouter API (120B LLM Cascade & Router)
     BHARATROUTER_API_KEY: str = os.getenv("BHARATROUTER_API_KEY", "")
+
+    # 5. OpenRouter AI Cascade
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_BACKUP_KEY: str = os.getenv("OPENROUTER_BACKUP_KEY", "")
+
+    # 6. Groq LPU & Grok AI Acceleration
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
+
+    # --- Deployment Tokens ---
+    VERCEL_TOKEN: str = os.getenv("VERCEL_TOKEN", "")
+    RENDER_API_KEY: str = os.getenv("RENDER_API_KEY", "")
 
     # --- Fast2SMS & Gmail SMTP OTP Gateway ---
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
