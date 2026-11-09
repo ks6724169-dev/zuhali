@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   PanelLeft, SquarePen, Code2, Check, Plus,
   Trash2, FolderOpen, MessageSquare, FileCode, Monitor
@@ -37,6 +37,20 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // Live Sync with AI Developer Agent created files
+  useEffect(() => {
+    const handleSync = (e) => {
+      if (e.detail?.files) {
+        setFiles(e.detail.files);
+        if (e.detail.activeFile) {
+          setActiveFile(e.detail.activeFile);
+        }
+      }
+    };
+    window.addEventListener('zuhali_editor_sync', handleSync);
+    return () => window.removeEventListener('zuhali_editor_sync', handleSync);
+  }, []);
 
   // Sync files to localStorage per user
   const updateFiles = (updated) => {

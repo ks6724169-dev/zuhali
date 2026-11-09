@@ -48,7 +48,7 @@ export default function ChatWorkspace({
   const handleSend = (e) => {
     e?.preventDefault();
     if (!draft.trim() && !attachment) return;
-    sendMessage(draft, attachment);
+    sendMessage(draft, attachment, { developerMode });
     setDraft('');
     setAttachment(null);
     setAttachOpen(false);
@@ -237,6 +237,65 @@ export default function ChatWorkspace({
                       <span className="assistant-mark">z</span>
                       <strong>Zuhali</strong>
                     </div>
+
+                    {message.devSteps && message.devSteps.length > 0 && (
+                      <div className="dev-agent-card">
+                        <div className="dev-agent-card-header">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="dev-agent-pulse-icon">
+                              <Code2 size={15} />
+                            </div>
+                            <strong style={{ fontSize: 13, color: '#0f172a' }}>Autonomous Developer Agent</strong>
+                            {message.projectData?.projectName && (
+                              <span className="dev-project-badge">{message.projectData.projectName}</span>
+                            )}
+                          </div>
+                          {message.isStreaming && (
+                            <span className="dev-agent-status-badge">
+                              <span className="dev-pulse-dot" /> Working...
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="dev-agent-steps">
+                          {message.devSteps.map((step, idx) => (
+                            <div key={idx} className="dev-agent-step-item">
+                              <span className="dev-step-icon">
+                                {step.step === 'mkdir' ? '📁' : step.step === 'file_write' ? '📝' : step.step === 'terminal' ? '💻' : '⚡'}
+                              </span>
+                              <div className="dev-step-body">
+                                <div className="dev-step-title">{step.title}</div>
+                                {step.details && <div className="dev-step-details">{step.details}</div>}
+                                {step.command && <div className="dev-step-command">$ {step.command}</div>}
+                              </div>
+                              <span className="dev-step-check">✓</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {message.projectData && (
+                          <div className="dev-agent-actions">
+                            <button
+                              type="button"
+                              className="dev-action-btn primary"
+                              onClick={onOpenEditor}
+                            >
+                              <Code2 size={15} />
+                              <span>Open in Code Editor</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="dev-action-btn secondary"
+                              onClick={onOpenTerminal}
+                            >
+                              <Monitor size={15} />
+                              <span>Open Terminal</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <p style={{ whiteSpace: 'pre-line' }}>{message.text}</p>
                     {message.isStreaming && <span className="streaming-cursor">▋</span>}
                     {!message.isStreaming && message.text && (

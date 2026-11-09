@@ -155,9 +155,10 @@ export function ChatProvider({ children }) {
   };
 
   // Send message using Server-Sent Events (SSE) Streaming
-  const sendMessage = async (text, attachment = null) => {
+  const sendMessage = async (text, attachment = null, options = {}) => {
     if (!text.trim() && !attachment) return;
 
+    const isDevMode = !!options?.developerMode;
     let targetConvId = activeConvId;
     const exists = conversations.some((c) => c.id === targetConvId);
     const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (attachment?.name || 'New chat');
@@ -203,6 +204,7 @@ export function ChatProvider({ children }) {
       attachment: attachment ? attachment.name : null,
       attachmentType: attachment ? attachment.type : null,
       attachmentData: attachment ? (attachment.dataUrl || null) : null,
+      devMode: isDevMode,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -212,6 +214,9 @@ export function ChatProvider({ children }) {
       assistant: true,
       text: '',
       isStreaming: true,
+      devMode: isDevMode,
+      devSteps: [],
+      projectData: null,
       feedback: null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -236,7 +241,9 @@ export function ChatProvider({ children }) {
           messages: historyPayload,
           attachment: attachmentPayload,
           conversation_id: targetConvId,
-          model: 'zuhali-pro-v1'
+          model: 'zuhali-pro-v1',
+          developer_mode: isDevMode,
+          user_email: user?.email || null
         })
       });
 
@@ -262,7 +269,65 @@ export function ChatProvider({ children }) {
           if (trimmed.startsWith('data: ')) {
             try {
               const payload = JSON.parse(trimmed.slice(6));
-              if (payload.token) {
+
+              // 1. Live Developer Step Updates
+              if (payload.type === 'dev_step') {
+                setMessagesMap((prev) => {
+                  const msgs = prev[targetConvId] || [];
+                  return {
+                    ...prev,
+                    [targetConvId]: msgs.map((m) => {
+                      if (m.id !== assistantMessageId) return m;
+                      const existing = m.devSteps || [];
+                      return {
+                        ...m,
+                        devSteps: [...existing, payload]
+                      };
+                    })
+                  };
+                });
+              }
+              // 2. Project Ready with Code Files & Terminal Logs
+              else if (payload.type === 'project_ready') {
+                // Sync files to CodeEditor
+                try {
+                  const editorKey = `zuhali_editor_files_${userKey}`;
+                  const prevFiles = JSON.parse(localStorage.getItem(editorKey) || '{}');
+                  const mergedFiles = { ...prevFiles, ...(payload.files || {}) };
+                  localStorage.setItem(editorKey, JSON.stringify(mergedFiles));
+                  window.dispatchEvent(
+                    new CustomEvent('zuhali_editor_sync', {
+                      detail: {
+                        files: mergedFiles,
+                        activeFile: Object.keys(payload.files || {})[0] || null
+                      }
+                    })
+                  );
+                } catch (e) {}
+
+                // Sync terminal logs
+                try {
+                  const termKey = `zuhali_terminal_logs_${userKey}`;
+                  const prevLogs = JSON.parse(localStorage.getItem(termKey) || '[]');
+                  const updatedLogs = [...prevLogs, ...(payload.terminalLogs || [])];
+                  localStorage.setItem(termKey, JSON.stringify(updatedLogs));
+                  window.dispatchEvent(
+                    new CustomEvent('zuhali_terminal_sync', { detail: { logs: updatedLogs } })
+                  );
+                } catch (e) {}
+
+                setMessagesMap((prev) => {
+                  const msgs = prev[targetConvId] || [];
+                  return {
+                    ...prev,
+                    [targetConvId]: msgs.map((m) =>
+                      m.id === assistantMessageId ? { ...m, projectData: payload } : m
+                    )
+                  };
+                });
+              }
+              // 3. Regular Token Streaming
+              else if (payload.token) {
                 accumulatedText += payload.token;
                 setMessagesMap((prev) => {
                   const msgs = prev[targetConvId] || [];

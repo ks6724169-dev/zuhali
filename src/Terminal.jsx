@@ -1,22 +1,51 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import './terminal.css';
 
 export default function Terminal({ onClose }) {
-  const [terminals, setTerminals] = useState([
-    {
-      id: 1,
-      lines: [
-        'Zuhali Terminal v1.0.0 [Production Shell]',
-        'Type "help" for a list of available commands or "status" to verify environment.',
-        ''
-      ]
-    }
-  ]);
+  const [terminals, setTerminals] = useState(() => {
+    let initialLines = [
+      'Zuhali Terminal v1.0.0 [Production Shell]',
+      'Type "help" for a list of available commands or "status" to verify environment.',
+      ''
+    ];
+    try {
+      // Find any saved developer agent terminal logs
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('zuhali_terminal_logs')) {
+          const stored = localStorage.getItem(k);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              initialLines = [...initialLines, '--- [AI Autonomous Developer Agent Session] ---', ...parsed, ''];
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {}
+    return [{ id: 1, lines: initialLines }];
+  });
   const [activeId, setActiveId] = useState(1);
   const [command, setCommand] = useState('');
   const inputRef = useRef(null);
   const active = terminals.find((terminal) => terminal.id === activeId) || terminals[0];
+
+  // Live Sync with AI Developer Agent terminal execution
+  useEffect(() => {
+    const handleSync = (e) => {
+      if (e.detail?.logs && Array.isArray(e.detail.logs)) {
+        setTerminals((prev) => {
+          const current = prev.find((t) => t.id === activeId) || prev[0];
+          const newLines = [...current.lines, '--- [AI Autonomous Developer Agent Session] ---', ...e.detail.logs, ''];
+          return prev.map((t) => (t.id === current.id ? { ...t, lines: newLines } : t));
+        });
+      }
+    };
+    window.addEventListener('zuhali_terminal_sync', handleSync);
+    return () => window.removeEventListener('zuhali_terminal_sync', handleSync);
+  }, [activeId]);
 
   const updateActive = (lines) => {
     setTerminals((items) =>

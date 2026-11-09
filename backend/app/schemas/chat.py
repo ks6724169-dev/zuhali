@@ -12,6 +12,8 @@ class ChatStreamRequest(BaseModel):
     attachment: Optional[Dict[str, Any]] = None
     model: Optional[str] = "zuhali-pro-v1"
     system_prompt: Optional[str] = None
+    developer_mode: Optional[bool] = False
+    user_email: Optional[str] = None
 
 class MessageFeedbackRequest(BaseModel):
     message_id: str
