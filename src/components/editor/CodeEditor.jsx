@@ -1,14 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  PanelLeft, SquarePen, Code2, Check, Plus,
-  Trash2, FolderOpen, MessageSquare, FileCode, Monitor
+  PanelLeft, SquarePen, Plus, FolderOpen,
+  Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 
 export default function CodeEditor({ onClose, onOpenTerminal }) {
   const { user } = useAuth();
-  const { sendMessage, startNewChat } = useChat();
+  const { startNewChat } = useChat();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
 
   // Real user files (ZERO fake demo files!)
@@ -34,6 +34,9 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
   const [fileSearch, setFileSearch] = useState('');
   const [newFilePrompt, setNewFilePrompt] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
+  const [collapsedFolders, setCollapsedFolders] = useState({});
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -60,12 +63,43 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     } catch (e) {}
   };
 
+  // Toggle folder collapse
+  const toggleFolder = (folderName) => {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [folderName]: !prev[folderName]
+    }));
+  };
+
+  // Build VS Code Folder / File Tree
+  const fileTree = useMemo(() => {
+    const folders = {};
+    const rootFiles = [];
+    const query = fileSearch.trim().toLowerCase();
+
+    Object.keys(files).forEach((fullPath) => {
+      if (query && !fullPath.toLowerCase().includes(query)) return;
+
+      if (fullPath.includes('/')) {
+        const parts = fullPath.split('/');
+        const folder = parts[0];
+        const filename = parts.slice(1).join('/');
+        if (!folders[folder]) folders[folder] = [];
+        folders[folder].push({ fullPath, filename });
+      } else {
+        rootFiles.push({ fullPath, filename: fullPath });
+      }
+    });
+
+    return { folders, rootFiles };
+  }, [files, fileSearch]);
+
   // Create new file
   const handleCreateFile = (e) => {
     e?.preventDefault();
     const name = newFileName.trim();
     if (!name) return;
-    
+
     const finalName = name.includes('.') ? name : `${name}.js`;
     const updated = { ...files, [finalName]: '' };
     updateFiles(updated);
@@ -73,18 +107,6 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     setNewFileName('');
     setNewFilePrompt(false);
     setTimeout(() => textareaRef.current?.focus(), 50);
-  };
-
-  // Delete file
-  const handleDeleteFile = (fileName, e) => {
-    e?.stopPropagation();
-    const copy = { ...files };
-    delete copy[fileName];
-    updateFiles(copy);
-    if (activeFile === fileName) {
-      const remaining = Object.keys(copy);
-      setActiveFile(remaining.length > 0 ? remaining[0] : null);
-    }
   };
 
   // Open file from local computer
@@ -131,17 +153,70 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     }
   };
 
-  // Send Code to AI for Review
-  const handleSendToAI = () => {
-    if (!activeFile || !files[activeFile]) return;
-    const content = files[activeFile];
-    sendMessage(`Please review and optimize this code (${activeFile}):\n\n\`\`\`\n${content}\n\`\`\``);
-    onClose();
+  // Render VS Code file extension badge
+  const renderFileBadge = (filename) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'html':
+      case 'htm':
+        return <span className="vs-file-badge html">HTML</span>;
+      case 'css':
+        return <span className="vs-file-badge css">CSS</span>;
+      case 'js':
+      case 'jsx':
+        return <span className="vs-file-badge js">JS</span>;
+      case 'py':
+        return <span className="vs-file-badge py">PY</span>;
+      case 'json':
+        return <span className="vs-file-badge json">JSON</span>;
+      case 'md':
+        return <span className="vs-file-badge md">MD</span>;
+      default:
+        return <span className="vs-file-badge generic">{ext?.toUpperCase() || 'FILE'}</span>;
+    }
   };
+
+  // Live Preview HTML Compiler
+  const previewHtml = useMemo(() => {
+    // 1. Find HTML file
+    const htmlKey = Object.keys(files).find(
+      (k) => k.endsWith('.html') || k.endsWith('.htm')
+    );
+    if (!htmlKey) {
+      return `<!DOCTYPE html><html><body style="font-family:'Segoe UI',sans-serif;padding:40px;color:#64748b;text-align:center;"><h3>No HTML File Selected</h3><p>Create or select an <code>index.html</code> file to preview your web application.</p></body></html>`;
+    }
+
+    let html = files[htmlKey] || '';
+
+    // 2. Inject CSS
+    const cssKeys = Object.keys(files).filter((k) => k.endsWith('.css'));
+    const combinedCss = cssKeys.map((k) => files[k]).join('\n');
+    if (combinedCss) {
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `<style>\n${combinedCss}\n</style></head>`);
+      } else {
+        html = `<style>\n${combinedCss}\n</style>` + html;
+      }
+    }
+
+    // 3. Inject JS
+    const jsKeys = Object.keys(files).filter((k) => k.endsWith('.js') && !k.endsWith('.json'));
+    const combinedJs = jsKeys.map((k) => files[k]).join('\n;\n');
+    if (combinedJs) {
+      if (html.includes('</body>')) {
+        html = html.replace('</body>', `<script>\n${combinedJs}\n</script></body>`);
+      } else {
+        html = html + `<script>\n${combinedJs}\n</script>`;
+      }
+    }
+
+    return html;
+  }, [files, previewKey]);
 
   const fileList = Object.keys(files);
   const currentContent = activeFile && files[activeFile] !== undefined ? files[activeFile] : '';
   const lines = currentContent ? currentContent.split('\n') : [''];
+  const activeFileName = activeFile ? activeFile.split('/').pop() : '';
 
   return (
     <section className="code-editor-screen">
@@ -171,6 +246,18 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
         <div className="code-header-spacer" />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Live Preview Button */}
+          <button
+            type="button"
+            className={`code-header-tool-btn ${showPreview ? 'active' : ''}`}
+            title="Live Preview"
+            onClick={() => setShowPreview((v) => !v)}
+          >
+            <Play size={14} />
+            <span>Preview</span>
+          </button>
+
+          {/* Terminal Button */}
           <button
             type="button"
             className="code-header-tool-btn"
@@ -181,19 +268,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
             <span>Terminal</span>
           </button>
 
-          {activeFile && (
-            <button
-              type="button"
-              className="code-header-tool-btn"
-              title="Ask AI to review this code"
-              style={{ color: 'var(--accent-color, #16a34a)', borderColor: 'var(--accent-color, #16a34a)' }}
-              onClick={handleSendToAI}
-            >
-              <MessageSquare size={15} />
-              <span>Review with AI</span>
-            </button>
-          )}
-
+          {/* Back to Chat / New Chat Icon */}
           <button
             className="code-header-icon"
             type="button"
@@ -211,7 +286,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
       {/* Main Body */}
       <div className="code-editor-body">
-        {/* Left Sidebar */}
+        {/* Left Sidebar (VS Code Style Explorer) */}
         {explorerOpen && (
           <aside className="code-editor-sidebar">
             <div className="explorer-content-wrap">
@@ -264,7 +339,6 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
               <div className="explorer-tree">
                 {fileList.length === 0 ? (
                   <div style={{ padding: '36px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                    <FileCode size={36} style={{ margin: '0 auto 10px', display: 'block', opacity: 0.5 }} />
                     <p style={{ margin: '0 0 14px', fontWeight: 500 }}>No files in workspace</p>
                     <button
                       type="button"
@@ -277,123 +351,186 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
                         padding: '8px 16px',
                         fontSize: 12.5,
                         fontWeight: 650,
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px color-mix(in srgb, var(--accent-color, #16a34a) 30%, transparent)'
+                        cursor: 'pointer'
                       }}
                     >
                       + Create File
                     </button>
                   </div>
                 ) : (
-                  fileList
-                    .filter((name) => name.toLowerCase().includes(fileSearch.toLowerCase()))
-                    .map((fileName) => (
-                      <div
-                        key={fileName}
-                        className={`explorer-file ${activeFile === fileName ? 'selected' : ''}`}
-                        onClick={() => setActiveFile(fileName)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <Code2 size={15} style={{ marginRight: 8, opacity: 0.8, flexShrink: 0 }} />
-                          <span>{fileName}</span>
+                  <>
+                    {/* VS Code Folders */}
+                    {Object.entries(fileTree.folders).map(([folderName, items]) => {
+                      const isCollapsed = !!collapsedFolders[folderName];
+                      return (
+                        <div key={folderName} className="vs-folder">
+                          <div
+                            className="vs-folder-header"
+                            onClick={() => toggleFolder(folderName)}
+                            title={folderName}
+                          >
+                            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                            <Folder size={14} className="vs-folder-icon" />
+                            <span className="vs-folder-name">{folderName}</span>
+                          </div>
+                          {!isCollapsed && (
+                            <div className="vs-folder-children">
+                              {items.map(({ fullPath, filename }) => (
+                                <div
+                                  key={fullPath}
+                                  className={`explorer-file ${activeFile === fullPath ? 'selected' : ''}`}
+                                  onClick={() => setActiveFile(fullPath)}
+                                  title={filename}
+                                >
+                                  {renderFileBadge(filename)}
+                                  <span className="vs-file-name">{filename}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          title="Delete file"
-                          onClick={(e) => handleDeleteFile(fileName, e)}
-                          style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                      );
+                    })}
+
+                    {/* Root Files */}
+                    {fileTree.rootFiles.map(({ fullPath, filename }) => (
+                      <div
+                        key={fullPath}
+                        className={`explorer-file ${activeFile === fullPath ? 'selected' : ''}`}
+                        onClick={() => setActiveFile(fullPath)}
+                        title={filename}
+                      >
+                        {renderFileBadge(filename)}
+                        <span className="vs-file-name">{filename}</span>
                       </div>
-                    ))
+                    ))}
+                  </>
                 )}
               </div>
             </div>
           </aside>
         )}
 
-        {/* Right Editor Area */}
-        <main className="code-editor-main">
-          {activeFile ? (
-            <>
-              <div className="code-editor-tabbar">
-                <div className="code-editor-tab">
-                  <Code2 size={15} />
-                  <span>{activeFile}</span>
-                  <span style={{ fontSize: 10, color: 'var(--accent-color, #16a34a)', fontWeight: 650 }}>• saved</span>
+        {/* Right Area: Editor + Split Live Preview */}
+        <main className="code-editor-main" style={{ display: 'flex', flexDirection: 'row' }}>
+          {/* Code Editor Area */}
+          <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {activeFile ? (
+              <>
+                <div className="code-editor-tabbar">
+                  <div className="code-editor-tab">
+                    {renderFileBadge(activeFileName)}
+                    <span style={{ fontWeight: 600 }}>{activeFileName}</span>
+                    <span style={{ fontSize: 10, color: 'var(--accent-color, #16a34a)', fontWeight: 650 }}>• saved</span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="code-editor-workspace">
-                <div className="code-editor-gutter" aria-hidden="true">
-                  {lines.map((_, i) => (
-                    <span key={i}>{i + 1}</span>
-                  ))}
+                <div className="code-editor-workspace">
+                  <div className="code-editor-gutter" aria-hidden="true">
+                    {lines.map((_, i) => (
+                      <span key={i}>{i + 1}</span>
+                    ))}
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    value={currentContent}
+                    onChange={handleCodeChange}
+                    onKeyDown={handleKeyDown}
+                    spellCheck="false"
+                    placeholder="// Write your code here..."
+                    style={{
+                      flex: 1,
+                      minHeight: '100%',
+                      border: 0,
+                      outline: 0,
+                      resize: 'none',
+                      background: 'transparent',
+                      color: 'inherit',
+                      fontFamily: 'inherit',
+                      fontSize: 'inherit',
+                      lineHeight: 'inherit',
+                      padding: '0 28px 0 0',
+                      tabSize: 2,
+                      caretColor: 'var(--accent-color, #16a34a)'
+                    }}
+                  />
                 </div>
-                <textarea
-                  ref={textareaRef}
-                  value={currentContent}
-                  onChange={handleCodeChange}
-                  onKeyDown={handleKeyDown}
-                  spellCheck="false"
-                  placeholder="// Write your code here..."
-                  style={{
-                    flex: 1,
-                    minHeight: '100%',
-                    border: 0,
-                    outline: 0,
-                    resize: 'none',
-                    background: 'transparent',
-                    color: 'inherit',
-                    fontFamily: 'inherit',
-                    fontSize: 'inherit',
-                    lineHeight: 'inherit',
-                    padding: '0 28px 0 0',
-                    tabSize: 2,
-                    caretColor: 'var(--accent-color, #16a34a)'
-                  }}
-                />
+              </>
+            ) : (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: 14 }}>
+                <Folder size={56} style={{ opacity: 0.35, color: 'var(--accent-color, #16a34a)' }} />
+                <h2 style={{ margin: 0, fontSize: 19, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
+                  Zuhali Code Workspace
+                </h2>
+                <p style={{ margin: 0, fontSize: 13, maxWidth: 320, textAlign: 'center', color: '#64748b', lineHeight: 1.5 }}>
+                  Select a file from the explorer on the left or create a new one to start editing.
+                </p>
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="choose-files-btn"
+                    onClick={() => {
+                      setExplorerOpen(true);
+                      setNewFilePrompt(true);
+                    }}
+                  >
+                    + Create New File
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 12,
+                      padding: '10px 18px',
+                      background: '#fff',
+                      color: '#334155',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Open File
+                  </button>
+                </div>
               </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: 14 }}>
-              <Code2 size={56} style={{ opacity: 0.4, color: 'var(--accent-color, #16a34a)' }} />
-              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
-                Zuhali Code Editor
-              </h2>
-              <p style={{ margin: 0, fontSize: 13, maxWidth: 320, textAlign: 'center', color: '#64748b', lineHeight: 1.5 }}>
-                No file open. Create a new file or open one from your computer to start coding.
-              </p>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button
-                  type="button"
-                  className="choose-files-btn"
-                  onClick={() => {
-                    setExplorerOpen(true);
-                    setNewFilePrompt(true);
-                  }}
-                >
-                  + Create New File
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    border: '1px solid #cbd5e1',
-                    borderRadius: 12,
-                    padding: '10px 18px',
-                    background: '#fff',
-                    color: '#334155',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Open File
-                </button>
+            )}
+          </div>
+
+          {/* Live Preview Pane (Live Web Execution) */}
+          {showPreview && (
+            <div className="code-editor-preview-pane">
+              <div className="preview-pane-header">
+                <div className="preview-url-bar">
+                  <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 10 }}>●</span>
+                  <span>http://localhost:3000/</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    title="Reload Preview"
+                    onClick={() => setPreviewKey((k) => k + 1)}
+                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 4 }}
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Close Preview"
+                    onClick={() => setShowPreview(false)}
+                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 4 }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
               </div>
+              <iframe
+                key={previewKey}
+                title="Live Preview"
+                className="preview-iframe-wrapper"
+                srcDoc={previewHtml}
+                sandbox="allow-scripts allow-forms allow-modals"
+              />
             </div>
           )}
         </main>

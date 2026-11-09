@@ -162,10 +162,31 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .explorer-search{height:34px;margin:6px 12px 10px;padding:0 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#1e293b;font-size:12px;outline:none}
 .explorer-search:focus{border-color:var(--accent-color, #16a34a);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent-color, #16a34a) 15%,transparent)}
 .explorer-project{padding:6px 14px;color:#64748b;font-size:10.5px;font-weight:750;letter-spacing:.8px}
-.explorer-tree{flex:1;min-height:0;overflow-y:auto;padding:2px 8px 24px;display:flex;flex-direction:column;gap:2px}
-.explorer-file{height:34px;display:flex;align-items:center;padding:0 10px;border-radius:7px;color:#334155;font-size:13px;cursor:pointer;transition:all .14s}
-.explorer-file:hover{background:#e2e8f0}
+.explorer-tree{flex:1;min-height:0;overflow-y:auto;padding:4px 8px 24px;display:flex;flex-direction:column;gap:2px}
+.vs-folder{margin-bottom:2px}
+.vs-folder-header{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:6px;color:#334155;font-size:12px;font-weight:650;letter-spacing:-.1px;cursor:pointer;user-select:none;transition:background .12s}
+.vs-folder-header:hover{background:#f1f5f9;color:#0f172a}
+.vs-folder-icon{color:#eab308;flex-shrink:0}
+.vs-folder-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vs-folder-children{padding-left:16px;display:flex;flex-direction:column;gap:1px}
+.explorer-file{height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:6px;color:#475569;font-size:12.5px;cursor:pointer;transition:all .12s;user-select:none}
+.explorer-file:hover{background:#e2e8f0;color:#0f172a}
 .explorer-file.selected{background:color-mix(in srgb,var(--accent-color, #16a34a) 12%,#fff);color:var(--accent-color, #16a34a);font-weight:600}
+.vs-file-badge{font-size:9.5px;font-weight:750;min-width:28px;text-align:center;border-radius:4px;padding:1px 4px;user-select:none;letter-spacing:.2px;flex-shrink:0}
+.vs-file-badge.html{color:#e44d26;background:#fee2e2}
+.vs-file-badge.css{color:#2563eb;background:#dbeafe}
+.vs-file-badge.js{color:#ca8a04;background:#fef08a}
+.vs-file-badge.py{color:#0284c7;background:#e0f2fe}
+.vs-file-badge.json{color:#059669;background:#d1fae5}
+.vs-file-badge.md{color:#7c3aed;background:#ede9fe}
+.vs-file-badge.generic{color:#64748b;background:#f1f5f9}
+.vs-file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Code Editor Live Preview Pane */
+.code-editor-preview-pane{flex:1;min-width:340px;height:100%;display:flex;flex-direction:column;border-left:1px solid #e2e8f0;background:#fff;animation:sidebar-in .15s ease-out}
+.preview-pane-header{height:40px;flex:0 0 40px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #e2e8f0;background:#fafbfc}
+.preview-url-bar{display:flex;align-items:center;gap:8px;padding:3px 12px;border-radius:6px;background:#f1f5f9;color:#475569;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;border:1px solid #e2e8f0}
+.preview-iframe-wrapper{flex:1;width:100%;height:100%;border:none;background:#fff}
 
 /* Main Code Editor Panel */
 .code-editor-main{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;background:#fff;overflow:hidden}
