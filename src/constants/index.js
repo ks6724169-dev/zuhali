@@ -39,10 +39,11 @@ export const LANGUAGES = [
 
 export const INITIAL_RECENT_CHATS = [];
 
+export const DEFAULT_USER_STORAGE_QUOTA_MB = 200;
+
 export const STORAGE_CATEGORIES = [
-  { name: 'Audio', icon: 'Volume2', size: '350 MB' },
-  { name: 'Chats', icon: 'MessageSquare', size: '200 MB' },
-  { name: 'Files', icon: 'Folder', size: '600 MB' },
-  { name: 'Videos', icon: 'Monitor', size: '850 MB' },
-  { name: 'Images', icon: 'Camera', size: '1.2 GB' }
+  { name: 'Chats', icon: 'MessageSquare', label: 'Chat Transcripts & History' },
+  { name: 'Images', icon: 'Camera', label: 'Vision & Uploaded Images' },
+  { name: 'Files', icon: 'Folder', label: 'Documents & Code Files' },
+  { name: 'Cache', icon: 'Database', label: 'Workspace & App Cache' }
 ];
