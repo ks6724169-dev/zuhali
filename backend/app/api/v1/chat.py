@@ -99,3 +99,31 @@ async def list_feedback(limit: int = 50):
         finally:
             conn.close()
     return {"status": "success", "count": len(feedbacks), "feedbacks": feedbacks}
+
+import shutil
+import re
+from pathlib import Path
+from typing import Optional
+
+WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "workspace" / "projects"
+
+@router.delete("/project")
+async def delete_project(project_name: str, user_email: Optional[str] = None):
+    """Delete project folder and all files from workspace disk."""
+    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
+    project_dir = WORKSPACE_ROOT / user_key / project_name
+    if project_dir.exists() and project_dir.is_dir():
+        shutil.rmtree(project_dir, ignore_errors=True)
+        return {"status": "success", "message": f"Project '{project_name}' deleted"}
+    return {"status": "not_found", "message": "Directory not found on disk"}
+
+@router.patch("/project/rename")
+async def rename_project(old_name: str, new_name: str, user_email: Optional[str] = None):
+    """Rename project folder on workspace disk."""
+    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
+    old_dir = WORKSPACE_ROOT / user_key / old_name
+    new_dir = WORKSPACE_ROOT / user_key / new_name
+    if old_dir.exists() and old_dir.is_dir():
+        old_dir.rename(new_dir)
+        return {"status": "success", "message": f"Project renamed to '{new_name}'"}
+    return {"status": "not_found", "message": "Directory not found on disk"}

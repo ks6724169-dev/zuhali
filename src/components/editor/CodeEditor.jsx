@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   PanelLeft, SquarePen, Plus, FolderOpen,
-  Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X, Code2
+  Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X, Code2,
+  Pencil, Trash2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -38,6 +39,14 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
   const [previewKey, setPreviewKey] = useState(0);
   const [collapsedFolders, setCollapsedFolders] = useState({});
 
+  // Long-press folder context menu & operations
+  const [folderMenu, setFolderMenu] = useState(null); // { folderName, x, y }
+  const [renamingFolder, setRenamingFolder] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deletingFolder, setDeletingFolder] = useState(null);
+  const longPressTimer = useRef(null);
+  const isLongPressTriggered = useRef(false);
+
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -69,6 +78,96 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       ...prev,
       [folderName]: !prev[folderName]
     }));
+  };
+
+  // Long-press handlers for folder header
+  const handleFolderPointerDown = (folderName, e) => {
+    isLongPressTriggered.current = false;
+    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX) || 120;
+    const clientY = e.clientY || (e.touches && e.touches[0]?.clientY) || 150;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressTriggered.current = true;
+      setFolderMenu({ folderName, x: clientX, y: clientY });
+    }, 450);
+  };
+
+  const handleFolderPointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleFolderClick = (folderName) => {
+    if (isLongPressTriggered.current) {
+      isLongPressTriggered.current = false;
+      return;
+    }
+    toggleFolder(folderName);
+  };
+
+  // Confirm rename folder
+  const handleConfirmRename = async (oldName) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === oldName) {
+      setRenamingFolder(null);
+      return;
+    }
+
+    const newFolder = trimmed.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const updated = {};
+    for (const [k, v] of Object.entries(files)) {
+      if (k.startsWith(`${oldName}/`)) {
+        const suffix = k.slice(oldName.length + 1);
+        updated[`${newFolder}/${suffix}`] = v;
+      } else {
+        updated[k] = v;
+      }
+    }
+
+    updateFiles(updated);
+
+    if (activeFile && activeFile.startsWith(`${oldName}/`)) {
+      const suffix = activeFile.slice(oldName.length + 1);
+      setActiveFile(`${newFolder}/${suffix}`);
+    }
+
+    setRenamingFolder(null);
+
+    // Sync rename to backend disk
+    try {
+      await fetch(
+        `http://localhost:8000/api/v1/chat/project/rename?old_name=${encodeURIComponent(oldName)}&new_name=${encodeURIComponent(newFolder)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+        { method: 'PATCH' }
+      );
+    } catch (e) {}
+  };
+
+  // Confirm delete folder
+  const handleConfirmDelete = async (folderName) => {
+    const updated = {};
+    for (const [k, v] of Object.entries(files)) {
+      if (!k.startsWith(`${folderName}/`)) {
+        updated[k] = v;
+      }
+    }
+
+    updateFiles(updated);
+
+    if (activeFile && activeFile.startsWith(`${folderName}/`)) {
+      const remaining = Object.keys(updated);
+      setActiveFile(remaining.length > 0 ? remaining[0] : null);
+    }
+
+    setDeletingFolder(null);
+    setFolderMenu(null);
+
+    // Sync delete to backend disk
+    try {
+      await fetch(
+        `http://localhost:8000/api/v1/chat/project?project_name=${encodeURIComponent(folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+        { method: 'DELETE' }
+      );
+    } catch (e) {}
   };
 
   // Build VS Code Folder / File Tree
@@ -178,7 +277,6 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
   // Live Preview HTML Compiler
   const previewHtml = useMemo(() => {
-    // 1. Find HTML file
     const htmlKey = Object.keys(files).find(
       (k) => k.endsWith('.html') || k.endsWith('.htm')
     );
@@ -188,7 +286,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
     let html = files[htmlKey] || '';
 
-    // 2. Inject CSS
+    // Inject CSS
     const cssKeys = Object.keys(files).filter((k) => k.endsWith('.css'));
     const combinedCss = cssKeys.map((k) => files[k]).join('\n');
     if (combinedCss) {
@@ -199,7 +297,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       }
     }
 
-    // 3. Inject JS
+    // Inject JS
     const jsKeys = Object.keys(files).filter((k) => k.endsWith('.js') && !k.endsWith('.json'));
     const combinedJs = jsKeys.map((k) => files[k]).join('\n;\n');
     if (combinedJs) {
@@ -361,13 +459,42 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
                         <div key={folderName} className="vs-folder">
                           <div
                             className="vs-folder-header"
-                            onClick={() => toggleFolder(folderName)}
-                            title={folderName}
+                            title={`${folderName} (Long-press / right-click for options)`}
+                            onClick={() => handleFolderClick(folderName)}
+                            onMouseDown={(e) => handleFolderPointerDown(folderName, e)}
+                            onMouseUp={handleFolderPointerUp}
+                            onMouseLeave={handleFolderPointerUp}
+                            onTouchStart={(e) => handleFolderPointerDown(folderName, e)}
+                            onTouchEnd={handleFolderPointerUp}
+                            onTouchCancel={handleFolderPointerUp}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              handleFolderPointerUp();
+                              setFolderMenu({ folderName, x: e.clientX, y: e.clientY });
+                            }}
                           >
                             {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                             <Folder size={14} className="vs-folder-icon" />
-                            <span className="vs-folder-name">{folderName}</span>
+
+                            {renamingFolder === folderName ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                className="folder-rename-input"
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleConfirmRename(folderName);
+                                  if (e.key === 'Escape') setRenamingFolder(null);
+                                }}
+                                onBlur={() => handleConfirmRename(folderName)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <span className="vs-folder-name">{folderName}</span>
+                            )}
                           </div>
+
                           {!isCollapsed && (
                             <div className="vs-folder-children">
                               {items.map(({ fullPath, filename }) => (
@@ -502,6 +629,98 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
           </main>
         )}
       </div>
+
+      {/* Folder Context Menu (Long-press / Right-click) */}
+      {folderMenu && (
+        <>
+          <div
+            className="folder-menu-backdrop"
+            onClick={() => setFolderMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setFolderMenu(null);
+            }}
+          />
+          <div
+            className="folder-context-menu"
+            style={{
+              top: Math.min(folderMenu.y, window.innerHeight - 110),
+              left: Math.min(folderMenu.x, window.innerWidth - 190)
+            }}
+          >
+            <div className="folder-menu-header">{folderMenu.folderName}</div>
+            <button
+              type="button"
+              className="folder-menu-item"
+              onClick={() => {
+                setRenamingFolder(folderMenu.folderName);
+                setRenameValue(folderMenu.folderName);
+                setFolderMenu(null);
+              }}
+            >
+              <Pencil size={14} style={{ color: 'var(--accent-color, #16a34a)' }} />
+              <span>Rename</span>
+            </button>
+            <button
+              type="button"
+              className="folder-menu-item danger"
+              onClick={() => {
+                setDeletingFolder(folderMenu.folderName);
+                setFolderMenu(null);
+              }}
+            >
+              <Trash2 size={14} />
+              <span>Delete</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Delete Project Modal */}
+      {deletingFolder && (
+        <div className="delete-project-modal-overlay" onClick={() => setDeletingFolder(null)}>
+          <div className="delete-project-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fee2e2', color: '#dc2626', display: 'grid', placeItems: 'center' }}>
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <strong style={{ fontSize: 15, color: '#0f172a', display: 'block' }}>Delete Project</strong>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Permanently remove from system</span>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '0 0 18px' }}>
+              Are you sure you want to delete <strong>"{deletingFolder}"</strong> and all of its files? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}
+                onClick={() => setDeletingFolder(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={{
+                  background: '#dc2626',
+                  color: '#fff',
+                  border: 0,
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+                onClick={() => handleConfirmDelete(deletingFolder)}
+              >
+                Delete Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hidden local file picker */}
       <input
