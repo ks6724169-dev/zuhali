@@ -1,4 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
+from datetime import datetime, timedelta
+import uuid
+
 from app.schemas.auth import (
     SendOtpRequest,
     VerifyOtpRequest,
@@ -11,15 +14,22 @@ from app.services.otp_service import (
     generate_otp,
     send_email_otp,
     send_sms_otp,
-    verify_stored_otp
+    verify_stored_otp,
+    store_otp
 )
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.db.supabase import upsert_user_profile
-import uuid
+from app.db.supabase import (
+    normalize_email,
+    get_user_by_canonical,
+    save_pending_user,
+    mark_user_verified,
+    update_user_password,
+    upsert_user_profile
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication & OTP"])
 
-# In-memory user database { email: { name, email, hashed_password, verified } }
+# In-memory user cache as fallback/speed layer { canonical_email: { name, email, canonical_email, hashed_password, verified } }
 _USERS_DB = {}
 
 @router.post("/send-otp")
@@ -34,7 +44,11 @@ async def send_otp_endpoint(req: SendOtpRequest):
         ok, msg = send_sms_otp(recipient, otp)
         channel_used = "SMS"
     else:
-        ok, msg = send_email_otp(recipient, otp, req.purpose)
+        display_email, canonical_email = normalize_email(recipient)
+        ok, msg = send_email_otp(display_email, otp, req.purpose)
+        if ok:
+            store_otp(canonical_email, otp)
+            store_otp(display_email, otp)
         channel_used = "Email"
 
     if not ok:
@@ -52,74 +66,101 @@ async def send_otp_endpoint(req: SendOtpRequest):
 @router.post("/signup")
 async def signup_endpoint(req: SignupRequest):
     """
-    Register a new user in pending state and dispatch an OTP to their email.
-    Account is NOT active until OTP is verified!
+    Register a new user:
+    - 1 Gmail = 1 Account ONLY.
+    - Anti-abuse canonical normalization defeats dots (m.a.n.i.s.h) and +tags (user+tag).
+    - If already registered and verified: 409 Conflict rejection!
+    - Requires 6-digit OTP verification via Gmail SMTP SSL to activate.
     """
-    email_key = req.email.lower().strip()
+    display_email, canonical_email = normalize_email(req.email)
+    
+    # 1. Check if already registered in Supabase PostgreSQL or memory
+    db_user = get_user_by_canonical(canonical_email)
+    mem_user = _USERS_DB.get(canonical_email)
+    
+    is_verified = (db_user and db_user.get("is_verified")) or (mem_user and mem_user.get("verified"))
+    
+    if is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Yeh Gmail ({display_email}) pehle se registered hai! Ek Gmail se kewal ek hi account ban sakta hai. Kripya seedhe Login karein ya Forgot Password use karein."
+        )
 
-    # Store user with verified=False
-    _USERS_DB[email_key] = {
+    password_hash = get_password_hash(req.password)
+    user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, canonical_email))
+
+    # 2. Store pending user in Supabase & memory
+    save_pending_user(user_uuid, display_email, canonical_email, req.name, password_hash)
+    _USERS_DB[canonical_email] = {
         "name": req.name,
-        "email": email_key,
-        "hashed_password": get_password_hash(req.password),
+        "email": display_email,
+        "canonical_email": canonical_email,
+        "hashed_password": password_hash,
         "verified": False
     }
 
-    # Dispatch email OTP via Gmail SMTP (SSL 465)
+    # 3. Dispatch real 6-digit OTP via Gmail SMTP SSL port 465
     otp = generate_otp()
-    ok, msg = send_email_otp(email_key, otp, "account registration")
+    ok, msg = send_email_otp(display_email, otp, "account registration")
+    
+    if ok:
+        store_otp(canonical_email, otp)
+        store_otp(display_email, otp)
 
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Account created, but email OTP delivery failed: {msg}"
+            detail=f"Account banaya gaya, par email OTP bhejne me samasya aayi: {msg}"
         )
 
     return {
         "status": "success",
-        "message": f"Verification code sent to {email_key}. Please enter the 6-digit code to activate your account.",
-        "email": email_key,
+        "message": f"Verification code {display_email} par bhej diya gaya hai. Kripya 6-digit OTP enter karein.",
+        "email": display_email,
+        "canonical_email": canonical_email,
         "requires_otp": True
     }
 
 @router.post("/verify-otp")
 async def verify_otp_endpoint(req: VerifyOtpRequest):
     """
-    Verify 6-digit OTP. Only after this does the account become verified and active!
+    Verify 6-digit OTP:
+    Marks account verified permanently in Supabase and memory.
+    Issues JWT access token.
     """
-    email_key = req.recipient.lower().strip()
-    ok, msg = verify_stored_otp(email_key, req.otp)
+    display_email, canonical_email = normalize_email(req.recipient)
+    
+    # Try verifying by display email, or fallback to canonical email
+    ok, msg = verify_stored_otp(display_email, req.otp)
+    if not ok:
+        ok, msg = verify_stored_otp(canonical_email, req.otp)
+
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=msg
         )
 
-    # Activate user
-    user = _USERS_DB.get(email_key)
+    # Mark user verified in memory
+    user = _USERS_DB.get(canonical_email) or _USERS_DB.get(display_email)
+    user_name = user["name"] if user else display_email.split("@")[0]
     if user:
         user["verified"] = True
-        user_name = user["name"]
-    else:
-        user_name = email_key.split("@")[0]
 
-    # Sync verified user to live Supabase PostgreSQL
-    try:
-        user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, email_key))
-        upsert_user_profile(user_uuid, email_key, user_name)
-    except Exception as e:
-        print("[Supabase Sync Warning]:", e)
+    # Mark user verified in Supabase PostgreSQL
+    mark_user_verified(canonical_email)
 
     # Issue access token
-    access_token = create_access_token(subject=email_key)
+    access_token = create_access_token(subject=canonical_email)
 
     return {
         "status": "success",
-        "message": "Account verified and activated successfully!",
+        "message": "Account safaltapoorvak verify aur activate ho gaya hai!",
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "email": email_key,
+            "email": display_email,
+            "canonical_email": canonical_email,
             "name": user_name
         }
     }
@@ -127,91 +168,126 @@ async def verify_otp_endpoint(req: VerifyOtpRequest):
 @router.post("/login")
 async def login_endpoint(req: LoginRequest):
     """
-    Authenticate user credentials.
-    CRITICAL: Rejects unverified accounts! If not verified, triggers OTP and requires verification.
+    Strict Login:
+    - Only registered accounts can log in!
+    - Rejects unregistered accounts with 404.
+    - Rejects unverified accounts with 403 and automatically sends an OTP to activate.
+    - Verifies password against PBKDF2-HMAC hash.
     """
-    email_key = req.email.lower().strip()
-    user = _USERS_DB.get(email_key)
+    display_email, canonical_email = normalize_email(req.email)
+    
+    # Check in memory, then Supabase
+    user = _USERS_DB.get(canonical_email)
+    if not user:
+        db_user = get_user_by_canonical(canonical_email)
+        if db_user:
+            user = {
+                "name": db_user.get("full_name") or display_email.split("@")[0],
+                "email": db_user.get("email"),
+                "canonical_email": canonical_email,
+                "hashed_password": db_user.get("password_hash"),
+                "verified": db_user.get("is_verified", False)
+            }
+            _USERS_DB[canonical_email] = user
 
+    # 1. Unregistered account check
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account not found. Please create an account first."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Yeh account registered nahi hai! Kripya pehle Sign Up karein aur naya account banayein."
         )
 
-    if not verify_password(req.password, user["hashed_password"]):
+    # 2. Password check
+    password_hash = user.get("hashed_password")
+    if not password_hash or not verify_password(req.password, password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password."
+            detail="Galat email ya password! Kripya dobara check karein."
         )
 
-    # Enforce OTP verification before allowing into the app
+    # 3. OTP verification check: If not verified yet, block and send OTP
     if not user.get("verified", False):
         otp = generate_otp()
-        send_email_otp(email_key, otp, "account verification")
+        send_email_otp(display_email, otp, "account verification")
+        store_otp(canonical_email, otp)
+        store_otp(display_email, otp)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is not verified yet. A fresh OTP has been sent to your email. Please verify to log in."
+            detail="Aapka account verify nahi hua hai! Ek naya 6-digit OTP aapki email par bhej diya gaya hai. Kripya pehle verify karein."
         )
 
-    access_token = create_access_token(subject=email_key)
+    access_token = create_access_token(subject=canonical_email)
 
     return {
         "status": "success",
-        "message": "Login successful.",
+        "message": "Login safal raha!",
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
             "name": user["name"],
-            "email": email_key
+            "email": display_email,
+            "canonical_email": canonical_email
         }
     }
 
 @router.post("/forgot-password")
 async def forgot_password_endpoint(req: ForgotPasswordRequest):
     """
-    Dispatch password recovery OTP.
+    Dispatch password recovery OTP to registered users only.
     """
-    email_key = req.email.lower().strip()
-    user = _USERS_DB.get(email_key)
+    display_email, canonical_email = normalize_email(req.email)
+    user = _USERS_DB.get(canonical_email) or get_user_by_canonical(canonical_email)
+    
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found with this email."
+            detail="Is email par koi registered account nahi mila."
         )
 
     otp = generate_otp()
-    ok, msg = send_email_otp(email_key, otp, "password reset")
+    ok, msg = send_email_otp(display_email, otp, "password reset")
+    
+    if ok:
+        store_otp(canonical_email, otp)
+        store_otp(display_email, otp)
 
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Password reset email dispatch failed: {msg}"
+            detail=f"Password reset OTP delivery failed: {msg}"
         )
 
     return {
         "status": "success",
-        "message": f"Password reset code sent to {email_key}.",
-        "email": email_key
+        "message": f"Password reset code {display_email} par bhej diya gaya hai.",
+        "email": display_email
     }
 
 @router.post("/reset-password")
 async def reset_password_endpoint(req: ResetPasswordRequest):
     """
-    Verify OTP and update user password.
+    Verify OTP and update user password in Supabase and memory.
     """
-    email_key = req.email.lower().strip()
-    ok, msg = verify_stored_otp(email_key, req.otp)
+    display_email, canonical_email = normalize_email(req.email)
+    
+    ok, msg = verify_stored_otp(display_email, req.otp)
+    if not ok:
+        ok, msg = verify_stored_otp(canonical_email, req.otp)
+        
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=msg
         )
 
-    if email_key in _USERS_DB:
-        _USERS_DB[email_key]["hashed_password"] = get_password_hash(req.new_password)
+    new_hash = get_password_hash(req.new_password)
+    
+    if canonical_email in _USERS_DB:
+        _USERS_DB[canonical_email]["hashed_password"] = new_hash
+        
+    update_user_password(canonical_email, new_hash)
 
     return {
         "status": "success",
-        "message": "Password has been successfully reset. Please log in with your new password."
+        "message": "Password safaltapoorvak badal diya gaya hai! Kripya naye password ke sath login karein."
     }
