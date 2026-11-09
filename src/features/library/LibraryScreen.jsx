@@ -183,11 +183,12 @@ export default function LibraryScreen({ onClose }) {
         {/* ============================================================ */}
         {currentView === 'main' && (
           <div className="library-page">
-            <header className="library-header">
-              <h1>Library</h1>
-              <button className="library-close-btn" onClick={onClose} aria-label="Close library">
-                <X size={20} />
+            <header className="library-sub-header">
+              <button className="library-back-btn" onClick={onClose} aria-label="Back to chat">
+                <ArrowLeft size={20} />
               </button>
+              <h2>Library</h2>
+              <div style={{ width: 38 }} />
             </header>
 
             {/* Search Library */}
