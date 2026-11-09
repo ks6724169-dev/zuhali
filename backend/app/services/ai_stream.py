@@ -5,7 +5,39 @@ import urllib.error
 from typing import AsyncGenerator
 from app.core.config import settings
 
-# 1. GROQ LPU (Ultra-fast 120B inference in <1 second)
+# 1. BHARATROUTER API (120B LLM Cascade & Router)
+async def call_bharatrouter_ai(prompt: str) -> str:
+    if not settings.BHARATROUTER_API_KEY:
+        return None
+    url = "https://api.bharatrouter.com/v1/chat/completions"
+    payload = {
+        "model": "gpt-oss-120b",
+        "messages": [
+            {"role": "system", "content": "You are Zuhali AI, an advanced AI coding and workspace assistant. Respond accurately, clearly, and concisely."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.BHARATROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zuhali-AI/1.0"
+    }
+
+    loop = asyncio.get_event_loop()
+    def _fetch():
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=12) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"].strip()
+
+    try:
+        return await loop.run_in_executor(None, _fetch)
+    except Exception as e:
+        print("[AI Gateway] BharatRouter fallback trigger:", str(e))
+        return None
+
+# 2. GROQ LPU (Ultra-fast 120B inference in <1 second)
 async def call_groq_ai(prompt: str) -> str:
     if not settings.GROQ_API_KEY:
         return None
@@ -35,40 +67,6 @@ async def call_groq_ai(prompt: str) -> str:
         return await loop.run_in_executor(None, _fetch)
     except Exception as e:
         print("[AI Gateway] Groq LPU fallback trigger:", str(e))
-        return None
-
-# 2. OPENROUTER AI CASCADE (Access to 200+ frontier models)
-async def call_openrouter_ai(prompt: str) -> str:
-    key = settings.OPENROUTER_API_KEY or settings.OPENROUTER_BACKUP_KEY
-    if not key:
-        return None
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    payload = {
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
-        "messages": [
-            {"role": "system", "content": "You are Zuhali AI, an enterprise-grade AI assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    }
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://zuhali.ai",
-        "X-Title": "Zuhali AI",
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    loop = asyncio.get_event_loop()
-    def _fetch():
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=15) as res:
-            data = json.loads(res.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"].strip()
-
-    try:
-        return await loop.run_in_executor(None, _fetch)
-    except Exception as e:
-        print("[AI Gateway] OpenRouter fallback trigger:", str(e))
         return None
 
 # 3. SARVAM AI (105B LLM & Indian Languages)
@@ -102,7 +100,41 @@ async def call_sarvam_ai(prompt: str) -> str:
         print("[AI Gateway] Sarvam AI fallback trigger:", str(e))
         return None
 
-# 4. CLOUDFLARE WORKERS AI EDGE (Llama-3.1-8b)
+# 4. OPENROUTER AI CASCADE (Access to 200+ frontier models)
+async def call_openrouter_ai(prompt: str) -> str:
+    key = settings.OPENROUTER_API_KEY or settings.OPENROUTER_BACKUP_KEY
+    if not key:
+        return None
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    payload = {
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "messages": [
+            {"role": "system", "content": "You are Zuhali AI, an enterprise-grade AI assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://zuhali.ai",
+        "X-Title": "Zuhali AI",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    loop = asyncio.get_event_loop()
+    def _fetch():
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"].strip()
+
+    try:
+        return await loop.run_in_executor(None, _fetch)
+    except Exception as e:
+        print("[AI Gateway] OpenRouter fallback trigger:", str(e))
+        return None
+
+# 5. CLOUDFLARE WORKERS AI EDGE (Llama-3.1-8b)
 async def call_cloudflare_ai(prompt: str) -> str:
     if not settings.CLOUDFLARE_API_TOKEN or not settings.CLOUDFLARE_ACCOUNT_ID:
         return None
@@ -131,7 +163,7 @@ async def call_cloudflare_ai(prompt: str) -> str:
         print("[AI Gateway] Cloudflare AI fallback trigger:", str(e))
         return None
 
-# 5. GOOGLE GEMINI AI
+# 6. GOOGLE GEMINI AI
 async def call_gemini_ai(prompt: str) -> str:
     if not settings.GEMINI_API_KEY:
         return None
@@ -159,52 +191,57 @@ async def generate_ai_stream(prompt: str, model_preference: str = "auto") -> Asy
     """
     Lightning-Fast Multi-AI Cascade Streaming Engine (SSE).
     Priority:
-    1. Groq LPU (GPT-OSS 120B in <1s)
-    2. Sarvam AI (105B for multilingual & Indian languages)
-    3. OpenRouter Frontier Cascade
-    4. Cloudflare Workers AI Edge
-    5. Google Gemini AI
-    6. Built-in High-Quality Engine
+    1. BharatRouter (120B Cascade Router in <0.2s)
+    2. Groq LPU (GPT-OSS 120B in <1s)
+    3. Sarvam AI (105B for multilingual & Indian languages)
+    4. OpenRouter Frontier Cascade
+    5. Cloudflare Workers AI Edge
+    6. Google Gemini AI
+    7. Built-in High-Quality Engine
     """
     reply_text = None
 
-    # Priority 1: Groq LPU (Ultra-fast 120B)
+    # Priority 1: BharatRouter (120B)
+    if not reply_text:
+        reply_text = await call_bharatrouter_ai(prompt)
+
+    # Priority 2: Groq LPU (Ultra-fast 120B)
     if not reply_text:
         reply_text = await call_groq_ai(prompt)
 
-    # Priority 2: Sarvam 105B
+    # Priority 3: Sarvam 105B
     if not reply_text:
         reply_text = await call_sarvam_ai(prompt)
 
-    # Priority 3: OpenRouter
+    # Priority 4: OpenRouter
     if not reply_text:
         reply_text = await call_openrouter_ai(prompt)
 
-    # Priority 4: Cloudflare Edge
+    # Priority 5: Cloudflare Edge
     if not reply_text:
         reply_text = await call_cloudflare_ai(prompt)
 
-    # Priority 5: Gemini AI
+    # Priority 6: Gemini AI
     if not reply_text:
         reply_text = await call_gemini_ai(prompt)
 
-    # Priority 6: Fallback synthesis
+    # Priority 7: Fallback synthesis
     if not reply_text:
         reply_text = (
             f"I am Zuhali AI. I have analyzed your query: '{prompt}'.\n\n"
             "Here is the synthesized intelligence result:\n"
-            "• Powered by Groq 120B LPUs, Sarvam 105B, OpenRouter & Cloudflare Workers AI.\n"
+            "• Powered by BharatRouter 120B, Groq LPU, Sarvam 105B, OpenRouter & Cloudflare Workers AI.\n"
             "• Sub-second response streaming over Server-Sent Events (SSE).\n"
             "• Built-in Code Editor and interactive Terminal ready for deployment."
         )
 
-    # Yield tokens with human typing cadence
+    # Yield tokens with natural typing cadence
     words = reply_text.split(" ")
     for i, word in enumerate(words):
         chunk = (word if i == 0 else " " + word)
         payload = json.dumps({"token": chunk, "done": False})
         yield f"data: {payload}\n\n"
-        await asyncio.sleep(0.015)  # ultra-responsive streaming
+        await asyncio.sleep(0.015)
 
     # Final event signaling completion
     yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
