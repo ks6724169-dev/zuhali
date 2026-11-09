@@ -16,7 +16,7 @@ import {
 export default function LibraryScreen({ onClose }) {
   const { user } = useAuth();
   const { sendMessage } = useChat();
-  const userKey = user?.email || 'guest';
+  const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
 
   // Navigation: 'main' | 'upload' | 'photos' | 'videos' | 'documents' | 'projects' | 'ai-generate'
   const [currentView, setCurrentView] = useState('main');

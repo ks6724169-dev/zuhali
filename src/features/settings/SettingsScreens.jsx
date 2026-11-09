@@ -505,6 +505,30 @@ export function StorageScreen({ onBack }) {
         } catch (e) {}
       }
 
+      // Library files (Photos, Videos, Documents) integration
+      const libKey = `zuhali_library_files_${userKey}`;
+      const libRaw = localStorage.getItem(libKey) || '';
+      if (libRaw) {
+        try {
+          const libFiles = JSON.parse(libRaw) || [];
+          libFiles.forEach((f) => {
+            const sz = f.size || (f.dataUrl ? f.dataUrl.length : 0);
+            if (f.category === 'photo' || f.category === 'video') {
+              imageBytes += sz;
+            } else {
+              fileBytes += sz;
+            }
+          });
+        } catch (e) {}
+      }
+
+      // Library projects integration
+      const projKey = `zuhali_library_projects_${userKey}`;
+      const projRaw = localStorage.getItem(projKey) || '';
+      if (projRaw) {
+        chatBytes += projRaw.length * 2;
+      }
+
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (k && !k.includes(userKey)) {
