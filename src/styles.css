@@ -539,9 +539,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .library-list-meta svg{cursor:pointer;color:#64748b}
 
 /* Files List (Page 3) */
-.library-files-list,.recent-files-compact-list,.library-projects-list{display:flex;flex-direction:column;background:#fff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden}
+.library-files-list,.recent-files-compact-list,.library-projects-list{display:flex;flex-direction:column;background:#fff;border:1px solid #e2e8f0;border-radius:18px;overflow:visible;position:relative}
 .library-file-row,.library-project-row{position:relative;display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid #f1f5f9;transition:background .15s}
-.library-file-row:last-child,.library-project-row:last-child{border-bottom:0}
+.library-file-row:first-child,.library-project-row:first-child{border-top-left-radius:17px;border-top-right-radius:17px}
+.library-file-row:last-child,.library-project-row:last-child{border-bottom:0;border-bottom-left-radius:17px;border-bottom-right-radius:17px}
 .library-file-row:hover,.library-project-row:hover{background:#f8fafc}
 .file-thumbnail{width:52px;height:52px;border-radius:12px;overflow:hidden;background:#f1f5f9;color:#64748b;display:grid;place-items:center;flex-shrink:0}
 .file-thumbnail img{width:100%;height:100%;object-fit:cover;display:block}
@@ -554,12 +555,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .project-icon-box{width:48px;height:48px;border-radius:14px;background:color-mix(in srgb,var(--accent-color, #16a34a) 14%,transparent);color:var(--accent-color, #16a34a);display:grid;place-items:center;flex-shrink:0}
 
 /* Actions & 3-dot menus */
-.file-actions-anchor{position:relative}
+.file-actions-anchor{position:relative;z-index:60}
 .file-more-btn{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#94a3b8;cursor:pointer}
 .file-more-btn:hover{background:#edf2f7;color:#334155}
-.file-dropdown-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:30;min-width:160px;padding:6px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:2px}
-.file-dropdown-menu button{display:flex;align-items:center;gap:9px;padding:8px 12px;border:0;border-radius:8px;background:transparent;color:#334155;font-size:12.5px;text-align:left;cursor:pointer}
-.file-dropdown-menu button:hover{background:#f1f5f9}
+.file-dropdown-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:120;min-width:170px;padding:6px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;box-shadow:0 12px 36px rgba(15,23,42,0.18);display:flex;flex-direction:column;gap:3px;animation:fadeIn .12s ease-out}
+.file-dropdown-menu button{display:flex;align-items:center;gap:10px;padding:9px 13px;border:0;border-radius:9px;background:transparent;color:#334155;font-size:13px;font-weight:550;text-align:left;cursor:pointer;transition:background .15s}
+.file-dropdown-menu button:hover{background:#f1f5f9;color:#0f172a}
 
 /* Empty state */
 .empty-state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 20px;text-align:center;color:#94a3b8}

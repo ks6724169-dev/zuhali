@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Search, Upload, Sparkles, Folder, FolderKanban,
   Image, Video, FileText, Plus, PlusCircle, MoreVertical, X,
   Check, Download, Trash2, MessageSquare, SlidersHorizontal,
-  FolderPlus, Eye
+  FolderPlus, Eye, Pencil
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -15,7 +15,7 @@ import {
 
 export default function LibraryScreen({ onClose }) {
   const { user } = useAuth();
-  const { sendMessage } = useChat();
+  const { sendMessage, conversations, selectChat, setConversationProject } = useChat();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
 
   // Navigation: 'main' | 'upload' | 'photos' | 'videos' | 'documents' | 'projects' | 'ai-generate'
@@ -33,6 +33,17 @@ export default function LibraryScreen({ onClose }) {
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [previewItem, setPreviewItem] = useState(null);
+
+  // Project Rename State
+  const [renamingProject, setRenamingProject] = useState(null);
+  const [renameProjectName, setRenameProjectName] = useState('');
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleOutsideClick = () => setActiveMenuId(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
 
   const fileInputRef = useRef(null);
 
@@ -134,9 +145,90 @@ export default function LibraryScreen({ onClose }) {
   };
 
   // Delete project
-  const handleDeleteProject = (id) => {
+  const handleDeleteProject = async (proj) => {
+    const id = typeof proj === 'object' ? proj.id : proj;
+    const target = projects.find((p) => p.id === id);
     updateProjects(projects.filter((p) => p.id !== id));
     setActiveMenuId(null);
+
+    // If attached to any active conversation, clear project association
+    if (conversations && target?.folderName && setConversationProject) {
+      conversations.forEach((c) => {
+        if (c.activeProject?.folderName === target.folderName) {
+          setConversationProject(c.id, null);
+        }
+      });
+    }
+
+    // Sync delete to backend disk
+    if (target?.folderName) {
+      try {
+        await fetch(
+          `http://localhost:8000/api/v1/chat/project?project_name=${encodeURIComponent(target.folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+          { method: 'DELETE' }
+        );
+      } catch (e) {}
+    }
+  };
+
+  // Open Project in Chat
+  const handleOpenInChat = (proj) => {
+    setActiveMenuId(null);
+    const existing = conversations?.find(
+      (c) => c.activeProject?.folderName === proj.folderName || c.id === proj.conversationId
+    );
+    if (existing) {
+      selectChat(existing.id);
+    } else {
+      const newConvId = 'conv_' + Date.now();
+      if (setConversationProject) {
+        setConversationProject(newConvId, proj);
+      }
+      selectChat(newConvId);
+    }
+    onClose();
+  };
+
+  // Confirm Rename Project
+  const handleConfirmRenameProject = async (e) => {
+    e?.preventDefault();
+    if (!renamingProject || !renameProjectName.trim()) return;
+
+    const oldName = renamingProject.name;
+    const oldFolder = renamingProject.folderName;
+    const newName = renameProjectName.trim();
+    const newFolder = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 32) || 'zuhali-project';
+
+    const updated = projects.map((p) =>
+      p.id === renamingProject.id
+        ? { ...p, name: newName, folderName: newFolder, updatedAt: new Date().toLocaleDateString() }
+        : p
+    );
+    updateProjects(updated);
+
+    if (conversations && setConversationProject) {
+      conversations.forEach((c) => {
+        if (c.activeProject?.folderName === oldFolder) {
+          setConversationProject(c.id, {
+            ...c.activeProject,
+            name: newName,
+            folderName: newFolder
+          });
+        }
+      });
+    }
+
+    setRenamingProject(null);
+    setRenameProjectName('');
+
+    if (oldFolder && oldFolder !== newFolder) {
+      try {
+        await fetch(
+          `http://localhost:8000/api/v1/chat/project/rename?old_name=${encodeURIComponent(oldFolder)}&new_name=${encodeURIComponent(newFolder)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+          { method: 'PATCH' }
+        );
+      } catch (e) {}
+    }
   };
 
   // Attach to Chat
@@ -523,19 +615,25 @@ export default function LibraryScreen({ onClose }) {
                 </div>
               ) : (
                 filteredProjects.map((proj) => (
-                  <div key={proj.id} className="library-project-row">
+                  <div
+                    key={proj.id}
+                    className="library-project-row"
+                    style={{ zIndex: activeMenuId === proj.id ? 50 : 1 }}
+                  >
                     <div className="project-icon-box">
                       <Folder size={22} />
                     </div>
-                    <div className="project-details">
+                    <div className="project-details" onClick={() => handleOpenInChat(proj)} style={{ cursor: 'pointer' }}>
                       <strong>{proj.name}</strong>
-                      <small>Updated {proj.updatedAt} · {proj.fileCount} files</small>
+                      <small>Updated {proj.updatedAt || 'Recently'} · {proj.fileCount || 0} files</small>
                       {proj.description && <span className="project-desc-snippet">{proj.description}</span>}
                     </div>
                     <div className="file-actions-anchor">
                       <button
                         type="button"
                         className="file-more-btn"
+                        aria-label="More options"
+                        title="More options"
                         onClick={(e) => {
                           e.stopPropagation();
                           setActiveMenuId(activeMenuId === proj.id ? null : proj.id);
@@ -544,15 +642,29 @@ export default function LibraryScreen({ onClose }) {
                         <MoreVertical size={16} />
                       </button>
                       {activeMenuId === proj.id && (
-                        <div className="file-dropdown-menu">
-                          <button onClick={() => {
-                            sendMessage(`Let's work on project: "${proj.name}" - ${proj.description || ''}`);
-                            onClose();
-                          }}>
-                            <MessageSquare size={14} /> Open in Chat
+                        <div className="file-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRenamingProject(proj);
+                              setRenameProjectName(proj.name);
+                              setActiveMenuId(null);
+                            }}
+                          >
+                            <Pencil size={14} /> Rename
                           </button>
-                          <button onClick={() => handleDeleteProject(proj.id)} style={{ color: '#ef4444' }}>
-                            <Trash2 size={14} /> Delete Project
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(proj)}
+                            style={{ color: '#ef4444' }}
+                          >
+                            <Trash2 size={14} /> Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenInChat(proj)}
+                          >
+                            <MessageSquare size={14} /> Open in chat
                           </button>
                         </div>
                       )}
@@ -831,6 +943,45 @@ export default function LibraryScreen({ onClose }) {
                   type="button"
                   className="create-project-cancel-btn"
                   onClick={() => setCreateProjectOpen(false)}
+                >
+                  Cancel
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: RENAME PROJECT */}
+        {renamingProject && (
+          <div className="modal-backdrop" onClick={() => setRenamingProject(null)}>
+            <div className="create-project-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Rename Project</h2>
+              <form onSubmit={handleConfirmRenameProject}>
+                <div className="project-input-group">
+                  <label htmlFor="rename-proj-name">Project Name</label>
+                  <input
+                    id="rename-proj-name"
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="Enter new project name..."
+                    value={renameProjectName}
+                    onChange={(e) => setRenameProjectName(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="create-project-submit-btn"
+                  disabled={!renameProjectName.trim()}
+                >
+                  Save Changes
+                </button>
+
+                <button
+                  type="button"
+                  className="create-project-cancel-btn"
+                  onClick={() => setRenamingProject(null)}
                 >
                   Cancel
                 </button>
