@@ -29,11 +29,21 @@ class Settings:
     SUPABASE_KEY: str = os.getenv("SUPABASE_ANON_KEY", "your-anon-key")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-    # AI Provider (Gemini / OpenAI)
+    # --- Multi-AI Inference Providers ---
+    # 1. Google Gemini AI API
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    
+    # 2. Cloudflare Workers AI & Edge
+    CLOUDFLARE_ACCOUNT_ID: str = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+    CLOUDFLARE_API_TOKEN: str = os.getenv("CLOUDFLARE_API_TOKEN", "")
 
-    # Fast2SMS & Gmail SMTP OTP Gateway
+    # 3. Sarvam AI (105B LLM & Bulbul TTS)
+    SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")
+
+    # 4. BharatRouter API (120B LLM Cascade & Router)
+    BHARATROUTER_API_KEY: str = os.getenv("BHARATROUTER_API_KEY", "")
+
+    # --- Fast2SMS & Gmail SMTP OTP Gateway ---
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     FAST2SMS_API_KEY: str = os.getenv("FAST2SMS_API_KEY", "")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
