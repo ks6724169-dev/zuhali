@@ -239,59 +239,61 @@ export default function ChatWorkspace({
                     </div>
                     <p style={{ whiteSpace: 'pre-line' }}>{message.text}</p>
                     {message.isStreaming && <span className="streaming-cursor">▋</span>}
-                    <div className="response-tools" aria-label="Response actions">
-                      <button
-                        title="Copy response"
-                        aria-label="Copy response"
-                        onClick={() => copySingleResponse(message.text)}
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        title="Share entire chat"
-                        aria-label="Share entire chat"
-                        onClick={shareConversation}
-                      >
-                        <Share2 size={16} />
-                      </button>
-                      <button
-                        title="Branch from this message"
-                        aria-label="Branch from this message"
-                        onClick={() => branchFrom(message.id)}
-                      >
-                        <GitBranch size={16} />
-                      </button>
-                      <button
-                        title="Read aloud"
-                        aria-label="Read aloud"
-                        onClick={() => speakResponse(message.text)}
-                      >
-                        <Volume2 size={16} />
-                      </button>
-                      <button
-                        className={message.feedback === 'like' ? 'is-active' : ''}
-                        title="Like response"
-                        aria-label="Like response"
-                        onClick={() => setActiveFeedbackModal({ messageId: message.id, type: 'like' })}
-                      >
-                        <Heart size={16} />
-                      </button>
-                      <button
-                        className={message.feedback === 'dislike' ? 'is-active' : ''}
-                        title="Dislike response"
-                        aria-label="Dislike response"
-                        onClick={() => setActiveFeedbackModal({ messageId: message.id, type: 'dislike' })}
-                      >
-                        <ThumbsDown size={16} />
-                      </button>
-                      <button
-                        title="Regenerate response"
-                        aria-label="Regenerate response"
-                        onClick={() => regenerate(message.id)}
-                      >
-                        <RefreshCw size={16} />
-                      </button>
-                    </div>
+                    {!message.isStreaming && message.text && (
+                      <div className="response-tools" aria-label="Response actions">
+                        <button
+                          title="Copy response"
+                          aria-label="Copy response"
+                          onClick={() => copySingleResponse(message.text)}
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button
+                          title="Share entire chat"
+                          aria-label="Share entire chat"
+                          onClick={shareConversation}
+                        >
+                          <Share2 size={16} />
+                        </button>
+                        <button
+                          title="Branch from this message"
+                          aria-label="Branch from this message"
+                          onClick={() => branchFrom(message.id)}
+                        >
+                          <GitBranch size={16} />
+                        </button>
+                        <button
+                          title="Read aloud"
+                          aria-label="Read aloud"
+                          onClick={() => speakResponse(message.text)}
+                        >
+                          <Volume2 size={16} />
+                        </button>
+                        <button
+                          className={message.feedback === 'like' ? 'is-active' : ''}
+                          title="Like response"
+                          aria-label="Like response"
+                          onClick={() => setActiveFeedbackModal({ messageId: message.id, type: 'like' })}
+                        >
+                          <Heart size={16} />
+                        </button>
+                        <button
+                          className={message.feedback === 'dislike' ? 'is-active' : ''}
+                          title="Dislike response"
+                          aria-label="Dislike response"
+                          onClick={() => setActiveFeedbackModal({ messageId: message.id, type: 'dislike' })}
+                        >
+                          <ThumbsDown size={16} />
+                        </button>
+                        <button
+                          title="Regenerate response"
+                          aria-label="Regenerate response"
+                          onClick={() => regenerate(message.id)}
+                        >
+                          <RefreshCw size={16} />
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="user-message-wrap">
@@ -499,7 +501,7 @@ export default function ChatWorkspace({
               type="submit"
               className="send-button"
               aria-label="Send message"
-              disabled={!draft.trim() && !attachment}
+              disabled={(!draft.trim() && !attachment) || isGenerating}
             >
               <ArrowUp size={20} />
             </button>
