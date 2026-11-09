@@ -26,8 +26,7 @@ export function AuthProvider({ children }) {
       try {
         data = await authApi.login(email, password);
       } catch (e) {
-        // Fallback for offline frontend demo
-        console.info('Backend offline or error, logging in locally:', e.message);
+        console.warn('Backend login fallback:', e.message);
       }
 
       const profile = {
@@ -53,25 +52,21 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // 2. SIGNUP (with Real Gmail SMTP OTP dispatch)
+  // 2. SIGNUP (Dispatches live OTP via Gmail SMTP)
   const signup = async (name, email, password) => {
     setAuthLoading(true);
     setAuthNotice('');
     setPendingEmail(email);
     try {
-      try {
-        const res = await authApi.signup(name, email, password);
-        setAuthNotice(res.message || 'Verification code sent to your email.');
-      } catch (e) {
-        // If backend is unreachable, still advance to verify screen
-        setAuthNotice('Verification code dispatched to ' + email);
-      }
-
+      const res = await authApi.signup(name, email, password);
+      setAuthNotice(res.message || `Verification code sent to ${email}`);
       setAuthView('verify');
       return { success: true };
     } catch (err) {
-      setAuthNotice(err.message || 'Signup failed');
-      return { success: false, error: err.message };
+      const errorMsg = err.message || 'Signup failed';
+      setAuthNotice(errorMsg);
+      console.error('[Signup Error]:', errorMsg);
+      return { success: false, error: errorMsg };
     } finally {
       setAuthLoading(false);
     }
@@ -87,8 +82,9 @@ export function AuthProvider({ children }) {
       setAuthNotice(res.message || `Code sent to ${recipient}`);
       return { success: true };
     } catch (err) {
-      setAuthNotice(err.message || `Could not send OTP to ${recipient}`);
-      return { success: false, error: err.message };
+      const errorMsg = err.message || `Could not send OTP to ${recipient}`;
+      setAuthNotice(errorMsg);
+      return { success: false, error: errorMsg };
     } finally {
       setAuthLoading(false);
     }
@@ -106,35 +102,25 @@ export function AuthProvider({ children }) {
     const recipient = pendingEmail || user?.email || 'user@zuhali.ai';
 
     try {
-      let verified = false;
-      try {
-        const res = await authApi.verifyOtp(recipient, code);
-        if (res.access_token) {
-          localStorage.setItem('zuhali_token', res.access_token);
-        }
-        verified = true;
-      } catch (e) {
-        // Allow fallback verification if testing offline
-        console.warn('Backend verification fallback:', e.message);
-        verified = true;
+      const res = await authApi.verifyOtp(recipient, code);
+      if (res.access_token) {
+        localStorage.setItem('zuhali_token', res.access_token);
       }
 
-      if (verified) {
-        const profile = {
-          id: 'usr_' + Date.now(),
-          name: recipient.split('@')[0],
-          email: recipient,
-          avatar: '',
-          createdAt: new Date().toISOString()
-        };
-        setUser(profile);
-        localStorage.setItem('zuhali_user', JSON.stringify(profile));
-        setAuthView('app');
-        return true;
-      }
-      return false;
+      const profile = {
+        id: 'usr_' + Date.now(),
+        name: res?.user?.name || recipient.split('@')[0],
+        email: recipient,
+        avatar: '',
+        createdAt: new Date().toISOString()
+      };
+      setUser(profile);
+      localStorage.setItem('zuhali_user', JSON.stringify(profile));
+      setAuthView('app');
+      return true;
     } catch (err) {
-      setAuthNotice(err.message || 'OTP verification failed');
+      const errorMsg = err.message || 'OTP verification failed';
+      setAuthNotice(errorMsg);
       return false;
     } finally {
       setAuthLoading(false);
@@ -147,12 +133,8 @@ export function AuthProvider({ children }) {
     setAuthNotice('');
     setPendingEmail(email);
     try {
-      try {
-        const res = await authApi.forgotPassword(email);
-        setAuthNotice(res.message || `Password reset code sent to ${email}`);
-      } catch (e) {
-        setAuthNotice(`Password reset code sent to ${email}`);
-      }
+      const res = await authApi.forgotPassword(email);
+      setAuthNotice(res.message || `Password reset code sent to ${email}`);
       setAuthView('verify');
     } catch (err) {
       setAuthNotice(err.message || 'Failed to send reset code');

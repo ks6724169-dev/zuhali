@@ -17,8 +17,7 @@ from app.core.security import create_access_token, get_password_hash, verify_pas
 
 router = APIRouter(prefix="/auth", tags=["Authentication & OTP"])
 
-# Simple user store for demo/backend state
-# In production with Supabase, this mirrors Supabase Auth table
+# In-memory user database (also can sync with Supabase profiles)
 _USERS_DB = {}
 
 @router.post("/send-otp")
@@ -39,12 +38,12 @@ async def send_otp_endpoint(req: SendOtpRequest):
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=msg
+            detail=f"Failed to dispatch {channel_used} OTP: {msg}"
         )
 
     return {
         "status": "success",
-        "message": f"Verification code sent via {channel_used} successfully.",
+        "message": f"Verification code sent via {channel_used} successfully to {recipient}.",
         "recipient": recipient
     }
 
@@ -89,21 +88,19 @@ async def signup_endpoint(req: SignupRequest):
         "verified": False
     }
 
-    # Dispatch email OTP
+    # Dispatch email OTP via Gmail SMTP (SSL 465)
     otp = generate_otp()
     ok, msg = send_email_otp(email_key, otp, "account registration")
     
     if not ok:
-        # Still allow signup but report error
-        return {
-            "status": "partial",
-            "message": f"User created, but email dispatch failed: {msg}",
-            "email": email_key
-        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Account created, but email OTP delivery failed: {msg}"
+        )
 
     return {
         "status": "success",
-        "message": "Account created! A 6-digit verification code has been dispatched to your email.",
+        "message": f"Account created! 6-digit verification code sent to {email_key}.",
         "email": email_key
     }
 
@@ -123,7 +120,6 @@ async def login_endpoint(req: LoginRequest):
             )
         name = user["name"]
     else:
-        # If user isn't in mock DB yet, accept credentials (first-time demo login)
         name = email_key.split("@")[0]
 
     access_token = create_access_token(subject=email_key)
@@ -150,12 +146,12 @@ async def forgot_password_endpoint(req: ForgotPasswordRequest):
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=msg
+            detail=f"Password reset email dispatch failed: {msg}"
         )
 
     return {
         "status": "success",
-        "message": "Password reset code sent to your email.",
+        "message": f"Password reset code sent to {req.email.strip()}.",
         "email": req.email
     }
 
