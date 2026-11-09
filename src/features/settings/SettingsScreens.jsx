@@ -1,0 +1,548 @@
+import React, { useState, useRef } from 'react';
+import {
+  ArrowLeft, Palette, Settings, Bell, ShieldCheck, Database, Info,
+  Volume2, MessageSquare, Folder, Monitor, Camera, Sun, Moon, Smartphone,
+  Check, UserRound, Pencil, CreditCard, CircleHelp, Shield, FileText, CheckCircle2
+} from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { ACCENT_COLORS, LANGUAGES, STORAGE_CATEGORIES } from '../../constants';
+
+// 1. MAIN SETTINGS SCREEN
+export function SettingsScreen({ onClose, onOpenSubScreen }) {
+  return (
+    <section className="profile-screen settings-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back" onClick={onClose}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Settings</h1>
+      </header>
+      <div className="settings-screen-content">
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('appearance')}>
+          <span className="settings-option-icon"><Palette size={19} /></span>
+          <span><strong>Appearance</strong><small>Light, Dark or System Default &amp; Colors</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('language')}>
+          <span className="settings-option-icon"><Settings size={19} /></span>
+          <span><strong>Language</strong><small>App language preferences</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('notifications')}>
+          <span className="settings-option-icon"><Bell size={19} /></span>
+          <span><strong>Notifications</strong><small>Notification &amp; sound preferences</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('privacy')}>
+          <span className="settings-option-icon"><ShieldCheck size={19} /></span>
+          <span><strong>Privacy &amp; Data</strong><small>Chat history and security settings</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('storage')}>
+          <span className="settings-option-icon"><Database size={19} /></span>
+          <span><strong>Storage</strong><small>Storage allocation &amp; cleanup</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+        <button type="button" className="settings-option" onClick={() => onOpenSubScreen('about')}>
+          <span className="settings-option-icon"><Info size={19} /></span>
+          <span><strong>About Zuhali</strong><small>Version 1.0.0 (Production Architecture)</small></span>
+          <ArrowLeft className="settings-option-chevron" size={17} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// 2. APPEARANCE SCREEN
+export function AppearanceScreen({ onBack }) {
+  const { theme, setTheme, accentColor, setAccentColor, currentAccent } = useTheme();
+  const [accentOpen, setAccentOpen] = useState(false);
+
+  return (
+    <section className="profile-screen appearance-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Appearance</h1>
+      </header>
+      <div className="appearance-content">
+        <div className="appearance-section-label">THEME</div>
+        <div className="appearance-theme-list">
+          {[
+            { name: 'Light', description: 'Clean and bright appearance', Icon: Sun, preview: 'light' },
+            { name: 'Dark', description: 'Comfortable in low light', Icon: Moon, preview: 'dark' },
+            { name: 'System Default', description: 'Match your device settings', Icon: Smartphone, preview: 'system' }
+          ].map(({ name, description, Icon, preview }) => (
+            <button
+              type="button"
+              key={name}
+              className={`appearance-theme-option ${theme === name ? 'selected' : ''}`}
+              onClick={() => setTheme(name)}
+            >
+              <span className="appearance-theme-icon"><Icon size={20} /></span>
+              <span className="appearance-theme-copy">
+                <strong>{name}</strong>
+                <small>{description}</small>
+              </span>
+              <span className={`appearance-theme-swatch ${preview}`} aria-hidden="true">
+                <i /><i /><i />
+              </span>
+              <span className="appearance-radio" aria-hidden="true">
+                {theme === name ? <span /> : null}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="appearance-section-label accent-label">ACCENT COLOR</div>
+        <div className="accent-picker-wrap">
+          <button
+            type="button"
+            className="accent-picker-trigger"
+            aria-expanded={accentOpen}
+            onClick={() => setAccentOpen((v) => !v)}
+          >
+            <span className="accent-picker-current">
+              <i style={{ background: currentAccent.value }} />
+              {accentColor}
+            </span>
+            <span className="accent-picker-trigger-right">
+              <small>20 colors</small>
+              <ArrowLeft size={16} className={accentOpen ? 'accent-chevron-open' : 'accent-chevron'} />
+            </span>
+          </button>
+
+          {accentOpen && (
+            <div className="accent-color-popup" role="listbox" aria-label="Choose accent color">
+              <div className="accent-popup-heading">Choose a color</div>
+              <div className="accent-color-list">
+                {ACCENT_COLORS.map(({ name, value }) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={accentColor === name}
+                    key={name}
+                    className={`accent-color-option ${accentColor === name ? 'selected' : ''}`}
+                    onClick={() => {
+                      setAccentColor(name);
+                      setAccentOpen(false);
+                    }}
+                  >
+                    <i style={{ background: value }} />
+                    <span>{name}</span>
+                    {accentColor === name && <span className="accent-color-check">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="appearance-section-label preview-label">PREVIEW</div>
+        <div className={`appearance-chat-preview ${theme === 'Dark' ? 'preview-dark' : ''}`}>
+          <div className="appearance-preview-header">
+            <span className="appearance-preview-logo"><span /></span>
+            <span><strong>Zuhali</strong><small>AI Assistant</small></span>
+          </div>
+          <div className="appearance-preview-message">Hello! How can I help you today?</div>
+          <div className="appearance-preview-user">Explain Artificial Intelligence.</div>
+          <small className="appearance-preview-note">Preview of your active theme &amp; accent</small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// 3. LANGUAGE SCREEN
+export function LanguageScreen({ onBack }) {
+  const [selectedLang, setSelectedLang] = useState(() => localStorage.getItem('zuhali_lang') || 'English');
+
+  const handleSelect = (langName) => {
+    setSelectedLang(langName);
+    localStorage.setItem('zuhali_lang', langName);
+  };
+
+  return (
+    <section className="profile-screen language-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Language</h1>
+      </header>
+      <div className="language-screen-content">
+        <div className="language-intro">
+          <strong>App Language</strong>
+          <small>Choose your preferred interface language.</small>
+        </div>
+        <div className="language-list">
+          {LANGUAGES.map(({ name, native }) => (
+            <button
+              type="button"
+              key={name}
+              className={`language-option ${selectedLang === name ? 'selected' : ''}`}
+              onClick={() => handleSelect(name)}
+            >
+              <span className="language-option-letter">🌐</span>
+              <span className="language-option-copy">
+                <strong>{native}</strong>
+                <small>{name}</small>
+              </span>
+              <span className="language-radio" aria-hidden="true">
+                {selectedLang === name ? <i /> : null}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="language-footnote">Language preference is saved and applied immediately.</p>
+      </div>
+    </section>
+  );
+}
+
+// 4. NOTIFICATIONS SCREEN
+export function NotificationsScreen({ onBack }) {
+  const [push, setPush] = useState(true);
+  const [aiReplies, setAiReplies] = useState(true);
+  const [updates, setUpdates] = useState(true);
+  const [reminders, setReminders] = useState(false);
+  const [sound, setSound] = useState(true);
+  const [vibration, setVibration] = useState(false);
+
+  return (
+    <section className="profile-screen notifications-screen">
+      <header className="profile-screen-header notifications-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Notifications</h1>
+      </header>
+      <div className="notifications-screen-content">
+        <section className="notifications-group">
+          <div className="notifications-group-heading">GENERAL</div>
+          <div className="notifications-card">
+            <div className="notification-row">
+              <span className="notification-copy">
+                <strong>Push Notifications</strong>
+                <small>Allow Zuhali to deliver important notifications</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={push}
+                className={`notification-switch ${push ? 'on' : ''}`}
+                onClick={() => setPush((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+            <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
+              <span className="notification-copy">
+                <strong>AI Responses</strong>
+                <small>Notify when asynchronous tasks complete</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                disabled={!push}
+                aria-checked={aiReplies}
+                className={`notification-switch ${aiReplies ? 'on' : ''}`}
+                onClick={() => setAiReplies((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+            <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
+              <span className="notification-copy">
+                <strong>App Updates</strong>
+                <small>Product releases and new capabilities</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                disabled={!push}
+                aria-checked={updates}
+                className={`notification-switch ${updates ? 'on' : ''}`}
+                onClick={() => setUpdates((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+            <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
+              <span className="notification-copy">
+                <strong>Reminders</strong>
+                <small>Scheduled events and task follow-ups</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                disabled={!push}
+                aria-checked={reminders}
+                className={`notification-switch ${reminders ? 'on' : ''}`}
+                onClick={() => setReminders((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className={`notifications-group ${!push ? 'is-disabled' : ''}`}>
+          <div className="notifications-group-heading">SOUND &amp; VIBRATION</div>
+          <div className="notifications-card">
+            <div className="notification-row">
+              <span className="notification-copy">
+                <strong>Notification Sound</strong>
+                <small>Play subtle audio chime for alerts</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                disabled={!push}
+                aria-checked={sound}
+                className={`notification-switch ${sound ? 'on' : ''}`}
+                onClick={() => setSound((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+            <div className="notification-row">
+              <span className="notification-copy">
+                <strong>Vibration</strong>
+                <small>Haptic feedback on mobile devices</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                disabled={!push}
+                aria-checked={vibration}
+                className={`notification-switch ${vibration ? 'on' : ''}`}
+                onClick={() => setVibration((v) => !v)}
+              >
+                <span />
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+// 5. STORAGE SCREEN
+export function StorageScreen({ onBack }) {
+  return (
+    <section className="profile-screen storage-screen">
+      <header className="profile-screen-header storage-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Storage</h1>
+      </header>
+      <div className="storage-screen-content">
+        <section className="storage-overview-card">
+          <div className="storage-overview-top">
+            <span className="storage-eyebrow">TOTAL STORAGE</span>
+            <strong>10 GB Cloud Quota</strong>
+          </div>
+          <div className="storage-progress-track"><span style={{ width: '32%' }} /></div>
+          <div className="storage-progress-labels">
+            <span>3.2 GB allocated</span>
+            <span>32% utilized</span>
+          </div>
+        </section>
+
+        <div className="storage-summary-grid">
+          <div className="storage-summary-card">
+            <span>Used Storage</span>
+            <strong>3.2 GB</strong>
+          </div>
+          <div className="storage-summary-card">
+            <span>Free Space</span>
+            <strong>6.8 GB</strong>
+          </div>
+        </div>
+
+        <section className="storage-categories-section">
+          <h2>Storage Breakdown</h2>
+          <div className="storage-category-list">
+            <div className="storage-category-row"><Volume2 size={19} /><strong>Audio &amp; Voice</strong><span>350 MB</span></div>
+            <div className="storage-category-row"><MessageSquare size={19} /><strong>Chat Transcripts</strong><span>200 MB</span></div>
+            <div className="storage-category-row"><Folder size={19} /><strong>Documents &amp; Files</strong><span>600 MB</span></div>
+            <div className="storage-category-row"><Monitor size={19} /><strong>Artifacts &amp; Demos</strong><span>850 MB</span></div>
+            <div className="storage-category-row"><Camera size={19} /><strong>Vision &amp; Images</strong><span>1.2 GB</span></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+// 6. USER PROFILE SCREEN
+export function ProfileScreen({ onClose }) {
+  const { user, updateProfile } = useAuth();
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [savedNotice, setSavedNotice] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    updateProfile({ name, email });
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 2000);
+  };
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      updateProfile({ avatar: url });
+    }
+  };
+
+  return (
+    <section className="profile-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back" onClick={onClose}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Profile</h1>
+      </header>
+      <div className="profile-screen-content">
+        <div className="profile-photo-section">
+          <div className="profile-photo-wrap">
+            {user?.avatar ? (
+              <img className="profile-photo-image" src={user.avatar} alt="Profile" />
+            ) : (
+              <div className="profile-photo-placeholder">
+                <UserRound size={48} />
+              </div>
+            )}
+            <button
+              type="button"
+              className="profile-photo-edit"
+              aria-label="Change profile photo"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Pencil size={15} />
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSave} className="profile-info-section">
+          <h2>Personal Information</h2>
+          <div className="profile-info-card">
+            <div className="profile-info-row">
+              <UserRound size={19} />
+              <div style={{ flex: 1 }}>
+                <small>Full Name</small>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontWeight: 600 }}
+                  placeholder="Enter your name"
+                />
+              </div>
+            </div>
+            <div className="profile-info-divider" />
+            <div className="profile-info-row">
+              <MailIcon size={19} />
+              <div style={{ flex: 1 }}>
+                <small>Email Address</small>
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontWeight: 600 }}
+                  placeholder="Enter your email"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="auth-primary"
+            style={{ marginTop: 24, borderRadius: 12 }}
+          >
+            {savedNotice ? 'Saved Successfully ✓' : 'Save Changes'}
+          </button>
+        </form>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleAvatarChange}
+        />
+      </div>
+    </section>
+  );
+}
+
+// 7. PLAN & BILLING SCREEN
+export function BillingScreen({ onClose }) {
+  return (
+    <section className="profile-screen settings-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back" onClick={onClose}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Plan &amp; Billing</h1>
+      </header>
+      <div className="settings-screen-content" style={{ padding: 20 }}>
+        <div className="storage-overview-card" style={{ background: 'var(--accent-color)', color: '#fff' }}>
+          <span style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>Current Tier</span>
+          <h2 style={{ margin: '8px 0', fontSize: 26 }}>Zuhali Pro Developer</h2>
+          <p style={{ margin: 0, opacity: 0.95 }}>Unlimited reasoning, Claude/Gemini streaming, and unlimited terminal execution sessions.</p>
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ fontSize: 16, marginBottom: 12 }}>Payment Method</h3>
+          <div className="profile-info-card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <CreditCard size={24} />
+            <div>
+              <strong>Visa ending in 4242</strong>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Renews on Dec 1, 2026</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// 8. HELP & SUPPORT SCREEN
+export function HelpScreen({ onClose }) {
+  return (
+    <section className="profile-screen settings-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back" onClick={onClose}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Help &amp; Support</h1>
+      </header>
+      <div className="settings-screen-content">
+        <div className="settings-option">
+          <span className="settings-option-icon"><CircleHelp size={19} /></span>
+          <span><strong>Documentation</strong><small>Guides, API references and tutorials</small></span>
+        </div>
+        <div className="settings-option">
+          <span className="settings-option-icon"><Shield size={19} /></span>
+          <span><strong>Security &amp; Compliance</strong><small>Data encryption and RLS protocols</small></span>
+        </div>
+        <div className="settings-option">
+          <span className="settings-option-icon"><FileText size={19} /></span>
+          <span><strong>Contact Support</strong><small>24/7 developer desk assistance</small></span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MailIcon({ size = 18 }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center' }}>✉️</span>;
+}
