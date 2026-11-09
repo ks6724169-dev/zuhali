@@ -25,10 +25,15 @@ class Settings:
         "*"
     ]
     
-    # Supabase
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://your-project.supabase.co")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_ANON_KEY", "your-anon-key")
+    # --- Supabase Database, Auth & Storage ---
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://uvibkxulhhknhptzvbwo.supabase.co")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_PUBLISHABLE_KEY: str = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+    SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_DB_PASSWORD: str = os.getenv("SUPABASE_DB_PASSWORD", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    SUPABASE_JWKS_URL: str = os.getenv("SUPABASE_JWKS_URL", "")
 
     # --- Multi-AI Inference Providers ---
     # 1. Google Gemini AI API
