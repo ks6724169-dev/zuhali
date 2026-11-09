@@ -427,28 +427,42 @@ export function ChatProvider({ children }) {
 
   // Feedback
   const submitFeedback = async (messageId, type, reason, comment) => {
+    const msgs = messagesMap[activeConvId] || [];
+    const index = msgs.findIndex((m) => m.id === messageId);
+    const targetMsg = index >= 0 ? msgs[index] : null;
+    const promptMsg = index > 0 ? msgs[index - 1] : null;
+
     setMessagesMap((prev) => {
-      const msgs = prev[activeConvId] || [];
+      const current = prev[activeConvId] || [];
       return {
         ...prev,
-        [activeConvId]: msgs.map((m) =>
+        [activeConvId]: current.map((m) =>
           m.id === messageId ? { ...m, feedback: type, feedbackReason: reason, feedbackComment: comment } : m
         )
       };
     });
 
     try {
+      const token = localStorage.getItem('zuhali_token');
       await fetch('http://localhost:8000/api/v1/chat/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           message_id: String(messageId),
           feedback_type: type,
           reason,
-          comment
+          comment,
+          user_email: user?.email || (userKey !== 'guest' ? userKey : null),
+          prompt: promptMsg?.text || null,
+          message_text: targetMsg?.text || null
         })
       });
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[Feedback Sync Error]:', err);
+    }
   };
 
   // Speech

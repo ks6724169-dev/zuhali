@@ -18,6 +18,9 @@ class MessageFeedbackRequest(BaseModel):
     feedback_type: str = Field(..., pattern="^(like|dislike)$")
     reason: Optional[str] = None
     comment: Optional[str] = None
+    user_email: Optional[str] = None
+    prompt: Optional[str] = None
+    message_text: Optional[str] = None
 
 class ConversationCreate(BaseModel):
     title: str = "New chat"
