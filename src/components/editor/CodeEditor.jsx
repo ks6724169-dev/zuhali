@@ -234,13 +234,8 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
           <strong style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
-            Code Workspace
+            {showPreview ? 'Live Preview' : 'Code Workspace'}
           </strong>
-          {activeFile && (
-            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#e2e8f0', color: '#475569', fontWeight: 600 }}>
-              {lines.length} lines
-            </span>
-          )}
         </div>
 
         <div className="code-header-spacer" />
@@ -411,42 +406,9 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
           </aside>
         )}
 
-        {/* When showPreview is TRUE: Code screen & sidebar auto-close, only Preview is shown */}
+        {/* When showPreview is TRUE: Pure full-screen preview with zero extra bars */}
         {showPreview ? (
           <div className="code-editor-preview-pane">
-            <div className="preview-pane-header">
-              <div className="preview-url-bar">
-                <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 10 }}>●</span>
-                <span>http://localhost:3000/</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button
-                  type="button"
-                  title="Reload Preview"
-                  onClick={() => setPreviewKey((k) => k + 1)}
-                  style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 4 }}
-                >
-                  <RefreshCw size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="code-header-tool-btn"
-                  onClick={() => setShowPreview(false)}
-                  style={{ height: 30, fontSize: 12, padding: '0 12px', gap: 6 }}
-                >
-                  <Code2 size={14} />
-                  <span>Back to Code</span>
-                </button>
-                <button
-                  type="button"
-                  title="Close Preview"
-                  onClick={() => setShowPreview(false)}
-                  style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 4 }}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            </div>
             <iframe
               key={previewKey}
               title="Live Preview"
