@@ -384,13 +384,7 @@ export default function LibraryScreen({ onClose }) {
                 <ArrowLeft size={20} />
               </button>
               <h2>{currentView === 'photos' ? 'Photos' : currentView === 'videos' ? 'Videos' : 'Files'}</h2>
-              <button
-                className="library-header-action-btn"
-                onClick={() => setSearchOpen((v) => !v)}
-                aria-label="Search"
-              >
-                <Search size={19} />
-              </button>
+              <div style={{ width: 38 }} />
             </header>
 
             {/* Search Bar */}
@@ -404,13 +398,12 @@ export default function LibraryScreen({ onClose }) {
               />
             </div>
 
-            {/* Count & Filter header */}
+            {/* Count header */}
             <div className="library-list-meta">
               <span>
                 Recently uploaded · {filteredCategoryFiles(currentView === 'photos' ? 'photo' : currentView === 'videos' ? 'video' : 'file').length}{' '}
                 {currentView === 'photos' ? 'Photos' : currentView === 'videos' ? 'Videos' : 'Files'}
               </span>
-              <SlidersHorizontal size={16} />
             </div>
 
             {/* List of Files */}
@@ -489,24 +482,14 @@ export default function LibraryScreen({ onClose }) {
                 <ArrowLeft size={20} />
               </button>
               <h2>Projects</h2>
-              <div className="projects-header-actions">
-                <button
-                  type="button"
-                  className="add-project-icon-btn"
-                  onClick={() => setCreateProjectOpen(true)}
-                  aria-label="Create new project"
-                >
-                  <PlusCircle size={22} />
-                </button>
-                <button
-                  type="button"
-                  className="library-header-action-btn"
-                  onClick={() => setSearchOpen((v) => !v)}
-                  aria-label="Search projects"
-                >
-                  <Search size={19} />
-                </button>
-              </div>
+              <button
+                type="button"
+                className="add-project-icon-btn"
+                onClick={() => setCreateProjectOpen(true)}
+                aria-label="Create new project"
+              >
+                <PlusCircle size={22} />
+              </button>
             </header>
 
             {/* Search projects */}
@@ -520,10 +503,9 @@ export default function LibraryScreen({ onClose }) {
               />
             </div>
 
-            {/* Project count and filter */}
+            {/* Project count */}
             <div className="library-list-meta">
               <span>All Projects · {filteredProjects.length} Projects</span>
-              <SlidersHorizontal size={16} />
             </div>
 
             {/* Project items list */}
