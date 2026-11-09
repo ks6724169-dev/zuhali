@@ -1,9 +1,14 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str
 
 class ChatStreamRequest(BaseModel):
     conversation_id: Optional[str] = None
     message: str = Field(..., min_length=1, max_length=10000)
+    messages: Optional[List[Dict[str, Any]]] = None
     model: Optional[str] = "zuhali-pro-v1"
     system_prompt: Optional[str] = None
 

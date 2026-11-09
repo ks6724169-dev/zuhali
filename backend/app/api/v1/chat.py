@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.schemas.chat import ChatStreamRequest, MessageFeedbackRequest
 from app.services.ai_stream import generate_ai_stream
@@ -9,10 +9,10 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def chat_stream(req: ChatStreamRequest):
     """
     ChatGPT-like Server-Sent Events (SSE) streaming endpoint.
-    Returns text/event-stream chunks.
+    Supports full multi-turn conversation memory history!
     """
     return StreamingResponse(
-        generate_ai_stream(req.message, req.model),
+        generate_ai_stream(req.message, req.model, req.messages),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

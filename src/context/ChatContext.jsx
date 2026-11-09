@@ -175,6 +175,18 @@ export function ChatProvider({ children }) {
       renameChat(targetConvId, autoTitle);
     }
 
+    const prevMsgs = messagesMap[targetConvId] || [];
+    const historyPayload = prevMsgs
+      .filter((m) => m.text && !m.isStreaming)
+      .map((m) => ({
+        role: m.assistant ? 'assistant' : 'user',
+        content: m.text
+      }));
+    historyPayload.push({
+      role: 'user',
+      content: text.trim()
+    });
+
     const userMessageId = Date.now();
     const userMessage = {
       id: userMessageId,
@@ -211,6 +223,7 @@ export function ChatProvider({ children }) {
         },
         body: JSON.stringify({
           message: text.trim(),
+          messages: historyPayload,
           conversation_id: targetConvId,
           model: 'zuhali-pro-v1'
         })
@@ -313,6 +326,13 @@ export function ChatProvider({ children }) {
     if (index < 0) return;
 
     const userPrompt = msgs[index - 1]?.text || 'Tell me more';
+    const historyPayload = msgs
+      .slice(0, index)
+      .filter((m) => m.text)
+      .map((m) => ({
+        role: m.assistant ? 'assistant' : 'user',
+        content: m.text
+      }));
     
     setMessagesMap((prev) => ({
       ...prev,
@@ -322,10 +342,19 @@ export function ChatProvider({ children }) {
     }));
 
     try {
+      const token = localStorage.getItem('zuhali_token');
       const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userPrompt })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          message: userPrompt,
+          messages: historyPayload,
+          conversation_id: activeConvId,
+          model: 'zuhali-pro-v1'
+        })
       });
 
       const reader = response.body.getReader();
