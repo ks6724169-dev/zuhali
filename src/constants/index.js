@@ -37,13 +37,7 @@ export const LANGUAGES = [
   { name: 'Urdu', native: 'اردو' }
 ];
 
-export const INITIAL_RECENT_CHATS = [
-  'AI Development',
-  'Website UI Design',
-  'Python Programming',
-  'AI Model Research',
-  'Business Planning'
-];
+export const INITIAL_RECENT_CHATS = [];
 
 export const STORAGE_CATEGORIES = [
   { name: 'Audio', icon: 'Volume2', size: '350 MB' },

@@ -81,23 +81,39 @@ export default function Sidebar({
         <div className="chat-sidebar-section">
           <div className="chat-sidebar-section-label">RECENT CHATS</div>
           <div className="chat-sidebar-recent">
-            {filteredChats.map((conv) => (
-              <button
-                type="button"
-                key={conv.id}
-                className={conv.id === activeConvId ? 'is-active-chat' : ''}
-                onClick={() => {
-                  selectChat(conv.id);
-                  onClose();
-                }}
-              >
-                <MessageSquare size={15} />
-                <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {conv.title}
-                </span>
-                {conv.isPinned && <Pin size={13} style={{ opacity: 0.7 }} />}
-              </button>
-            ))}
+            {filteredChats.length === 0 ? (
+              <div style={{
+                padding: '24px 12px',
+                textAlign: 'center',
+                color: 'var(--text-secondary, #94a3b8)',
+                fontSize: '13px',
+                lineHeight: '1.6'
+              }}>
+                <MessageSquare size={22} style={{ opacity: 0.35, margin: '0 auto 8px', display: 'block' }} />
+                <span>No saved chats yet</span>
+                <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '2px' }}>
+                  Start a new conversation
+                </div>
+              </div>
+            ) : (
+              filteredChats.map((conv) => (
+                <button
+                  type="button"
+                  key={conv.id}
+                  className={conv.id === activeConvId ? 'is-active-chat' : ''}
+                  onClick={() => {
+                    selectChat(conv.id);
+                    onClose();
+                  }}
+                >
+                  <MessageSquare size={15} />
+                  <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {conv.title}
+                  </span>
+                  {conv.isPinned && <Pin size={13} style={{ opacity: 0.7 }} />}
+                </button>
+              ))
+            )}
           </div>
         </div>
 

@@ -1,71 +1,105 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { INITIAL_RECENT_CHATS } from '../constants';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { useAuth } from './AuthContext';
 
 const ChatContext = createContext();
 
 export function ChatProvider({ children }) {
+  const { user } = useAuth();
+  const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
+
+  // Conversations for the currently logged-in user (NO DUMMY DEMO CHATS!)
   const [conversations, setConversations] = useState(() => {
-    const saved = localStorage.getItem('zuhali_conversations');
+    // Clean up old legacy demo storage keys
+    try {
+      localStorage.removeItem('zuhali_conversations');
+      localStorage.removeItem('zuhali_messages_map');
+    } catch (e) {}
+
+    const saved = localStorage.getItem(`zuhali_conversations_${userKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return INITIAL_RECENT_CHATS.map((title, index) => ({
-      id: 'conv_' + (index + 1),
-      title,
-      isPinned: false,
-      isArchived: false,
-      updatedAt: new Date(Date.now() - index * 3600000).toISOString()
-    }));
+    return [];
   });
 
   const [activeConvId, setActiveConvId] = useState(() => {
-    return 'conv_1';
+    const saved = localStorage.getItem(`zuhali_conversations_${userKey}`);
+    if (saved) {
+      try {
+        const list = JSON.parse(saved);
+        if (list.length > 0) return list[0].id;
+      } catch (e) {}
+    }
+    return 'conv_' + Date.now();
   });
 
   const [messagesMap, setMessagesMap] = useState(() => {
-    const saved = localStorage.getItem('zuhali_messages_map');
+    const saved = localStorage.getItem(`zuhali_messages_map_${userKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return {
-      conv_1: [
-        {
-          id: 101,
-          assistant: true,
-          text: 'Hello! I am Zuhali AI, powered by BharatRouter 120B, Groq LPUs, and Sarvam 105B. How can I assist you today?',
-          feedback: null
-        }
-      ]
-    };
+    return {};
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeFeedbackModal, setActiveFeedbackModal] = useState(null);
   const [activeRenameModal, setActiveRenameModal] = useState(null);
 
-  // Persist state
-  useEffect(() => {
-    localStorage.setItem('zuhali_conversations', JSON.stringify(conversations));
-  }, [conversations]);
+  const prevUserKeyRef = useRef(userKey);
 
+  // Synchronize chat state when user switches / logs in / logs out
   useEffect(() => {
-    localStorage.setItem('zuhali_messages_map', JSON.stringify(messagesMap));
-  }, [messagesMap]);
+    if (prevUserKeyRef.current !== userKey) {
+      prevUserKeyRef.current = userKey;
+      const savedConvs = localStorage.getItem(`zuhali_conversations_${userKey}`);
+      const savedMsgs = localStorage.getItem(`zuhali_messages_map_${userKey}`);
+
+      let loadedConvs = [];
+      let loadedMsgs = {};
+
+      if (savedConvs) {
+        try { loadedConvs = JSON.parse(savedConvs) || []; } catch (e) {}
+      }
+      if (savedMsgs) {
+        try { loadedMsgs = JSON.parse(savedMsgs) || {}; } catch (e) {}
+      }
+
+      setConversations(loadedConvs);
+      setMessagesMap(loadedMsgs);
+
+      if (loadedConvs.length > 0) {
+        setActiveConvId(loadedConvs[0].id);
+      } else {
+        setActiveConvId('conv_' + Date.now());
+      }
+    }
+  }, [userKey]);
+
+  // Persist conversations for this specific user
+  useEffect(() => {
+    if (userKey) {
+      localStorage.setItem(`zuhali_conversations_${userKey}`, JSON.stringify(conversations));
+    }
+  }, [conversations, userKey]);
+
+  // Persist messages for this specific user
+  useEffect(() => {
+    if (userKey) {
+      localStorage.setItem(`zuhali_messages_map_${userKey}`, JSON.stringify(messagesMap));
+    }
+  }, [messagesMap, userKey]);
 
   const currentMessages = messagesMap[activeConvId] || [];
-  const currentConv = conversations.find((c) => c.id === activeConvId) || { id: activeConvId, title: 'New chat' };
+  const currentConv = conversations.find((c) => c.id === activeConvId) || {
+    id: activeConvId,
+    title: 'New chat',
+    isPinned: false,
+    isArchived: false
+  };
 
   // Create new chat
   const startNewChat = () => {
     const newId = 'conv_' + Date.now();
-    const newConv = {
-      id: newId,
-      title: 'New chat',
-      isPinned: false,
-      isArchived: false,
-      updatedAt: new Date().toISOString()
-    };
-    setConversations((prev) => [newConv, ...prev]);
     setActiveConvId(newId);
     setMessagesMap((prev) => ({ ...prev, [newId]: [] }));
     return newId;
@@ -79,29 +113,29 @@ export function ChatProvider({ children }) {
     }
   };
 
-  // Rename
+  // Rename chat
   const renameChat = (convId, newTitle) => {
-    if (!newTitle.trim()) return;
+    if (!newTitle || !newTitle.trim()) return;
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, title: newTitle.trim(), updatedAt: new Date().toISOString() } : c))
     );
   };
 
-  // Pin
+  // Pin / Unpin
   const togglePinChat = (convId) => {
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, isPinned: !c.isPinned } : c))
     );
   };
 
-  // Archive
+  // Archive / Unarchive
   const toggleArchiveChat = (convId) => {
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, isArchived: !c.isArchived } : c))
     );
   };
 
-  // Delete
+  // Delete chat
   const deleteChat = (convId) => {
     setConversations((prev) => prev.filter((c) => c.id !== convId));
     setMessagesMap((prev) => {
@@ -119,14 +153,26 @@ export function ChatProvider({ children }) {
     }
   };
 
-  // Send message using real ChatGPT-style Server-Sent Events (SSE) Streaming
+  // Send message using Server-Sent Events (SSE) Streaming
   const sendMessage = async (text, attachment = null) => {
     if (!text.trim() && !attachment) return;
 
     let targetConvId = activeConvId;
-    if (currentConv.title === 'New chat' && text.trim()) {
-      const generatedTitle = text.trim().slice(0, 24) + (text.length > 24 ? '...' : '');
-      renameChat(targetConvId, generatedTitle);
+    const exists = conversations.some((c) => c.id === targetConvId);
+    const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (attachment?.name || 'New chat');
+
+    // If this conversation is not yet in the recent chats list, add it!
+    if (!exists) {
+      const newConv = {
+        id: targetConvId,
+        title: autoTitle,
+        isPinned: false,
+        isArchived: false,
+        updatedAt: new Date().toISOString()
+      };
+      setConversations((prev) => [newConv, ...prev]);
+    } else if (currentConv.title === 'New chat' && text.trim()) {
+      renameChat(targetConvId, autoTitle);
     }
 
     const userMessageId = Date.now();
@@ -210,8 +256,7 @@ export function ChatProvider({ children }) {
       }
     } catch (err) {
       console.warn('[SSE Stream Fallback]:', err.message);
-      // Graceful fallback simulation if connection dropped
-      const fallbackReply = `I am Zuhali AI. I processed your request: "${text || attachment?.name}". Powered by BharatRouter 120B and Groq LPU engine.`;
+      const fallbackReply = `I am Zuhali AI. I processed your request: "${text || attachment?.name}". Powered by BharatRouter 120B and Groq LPUs.`;
       let currentText = '';
       for (const word of fallbackReply.split(' ')) {
         await new Promise((r) => setTimeout(r, 30));
@@ -267,7 +312,6 @@ export function ChatProvider({ children }) {
     const index = msgs.findIndex((m) => m.id === messageId);
     if (index < 0) return;
 
-    // Find the previous user prompt
     const userPrompt = msgs[index - 1]?.text || 'Tell me more';
     
     setMessagesMap((prev) => ({
@@ -371,7 +415,7 @@ export function ChatProvider({ children }) {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Conversation text for copy/share
+  // Conversation text for copy/share/export
   const getConversationText = () => {
     return currentMessages
       .map((m) => (m.assistant ? 'Zuhali: ' : 'You: ') + m.text)
