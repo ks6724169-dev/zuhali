@@ -7,7 +7,9 @@ export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('zuhali_theme') || 'Light');
   const [accentColor, setAccentColor] = useState(() => localStorage.getItem('zuhali_accent') || 'Green');
 
-  const currentAccent = ACCENT_COLORS.find((c) => c.name === accentColor) || ACCENT_COLORS[1];
+  const currentAccent = ACCENT_COLORS.find(
+    (c) => c.name.toLowerCase() === (accentColor || '').toLowerCase() || c.value.toLowerCase() === (accentColor || '').toLowerCase()
+  ) || ACCENT_COLORS[1];
 
   useEffect(() => {
     localStorage.setItem('zuhali_theme', theme);

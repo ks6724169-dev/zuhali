@@ -105,6 +105,37 @@ export function AppearanceScreen({ onBack }) {
         </div>
 
         <div className="appearance-section-label accent-label">ACCENT COLOR</div>
+        
+        {/* Quick 1-click Color Swatches */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+          {ACCENT_COLORS.map(({ name, value }) => (
+            <button
+              key={name}
+              type="button"
+              title={name}
+              onClick={() => setAccentColor(name)}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: value,
+                border: accentColor === name ? '3px solid #fff' : '2px solid transparent',
+                outline: accentColor === name ? `2px solid ${value}` : 'none',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                boxShadow: accentColor === name ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
+                transform: accentColor === name ? 'scale(1.15)' : 'scale(1)',
+                transition: 'all .15s ease'
+              }}
+            >
+              {accentColor === name && (
+                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 'bold' }}>✓</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="accent-picker-wrap">
           <button
             type="button"
@@ -117,7 +148,7 @@ export function AppearanceScreen({ onBack }) {
               {accentColor}
             </span>
             <span className="accent-picker-trigger-right">
-              <small>20 colors</small>
+              <small>All 20 colors</small>
               <ArrowLeft size={16} className={accentOpen ? 'accent-chevron-open' : 'accent-chevron'} />
             </span>
           </button>
@@ -151,12 +182,12 @@ export function AppearanceScreen({ onBack }) {
         <div className="appearance-section-label preview-label">PREVIEW</div>
         <div className={`appearance-chat-preview ${theme === 'Dark' ? 'preview-dark' : ''}`}>
           <div className="appearance-preview-header">
-            <span className="appearance-preview-logo"><span /></span>
+            <span className="appearance-preview-logo" style={{ background: 'var(--accent-color, #16a34a)' }}><span /></span>
             <span><strong>Zuhali</strong><small>AI Assistant</small></span>
           </div>
           <div className="appearance-preview-message">Hello! How can I help you today?</div>
-          <div className="appearance-preview-user">Explain Artificial Intelligence.</div>
-          <small className="appearance-preview-note">Preview of your active theme &amp; accent</small>
+          <div className="appearance-preview-user" style={{ background: 'var(--accent-color, #16a34a)', color: '#fff' }}>Explain Artificial Intelligence.</div>
+          <small className="appearance-preview-note">Live Preview of your active theme &amp; accent color</small>
         </div>
       </div>
     </section>
