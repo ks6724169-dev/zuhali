@@ -57,9 +57,11 @@ class Settings:
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
 
-    # --- Deployment Tokens ---
+    # --- Deployment & Version Control Tokens ---
     VERCEL_TOKEN: str = os.getenv("VERCEL_TOKEN", "")
     RENDER_API_KEY: str = os.getenv("RENDER_API_KEY", "")
+    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
+    GITHUB_USERNAME: str = os.getenv("GITHUB_USERNAME", "")
 
     # --- Fast2SMS & Gmail SMTP OTP Gateway ---
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
