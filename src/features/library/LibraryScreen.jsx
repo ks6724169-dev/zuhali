@@ -565,7 +565,7 @@ export default function LibraryScreen({ onClose }) {
         )}
 
         {/* ============================================================ */}
-        {/* 5. AI GENERATE SCREEN */}
+        {/* 5. AI GENERATE SCREEN (Matching Upload Screen Style)         */}
         {/* ============================================================ */}
         {currentView === 'ai-generate' && (
           <div className="library-page">
@@ -577,48 +577,213 @@ export default function LibraryScreen({ onClose }) {
               <div style={{ width: 24 }} />
             </header>
 
-            <div className="library-upload-box" style={{ background: 'var(--surface-color, #fff)' }}>
-              <div className="upload-box-icon" style={{ background: 'color-mix(in srgb, var(--accent-color, #16a34a) 15%, transparent)' }}>
+            {/* AI Generate Box Card */}
+            <div className="library-upload-box">
+              <div className="upload-box-icon">
                 <Sparkles size={28} />
               </div>
-              <h3>Generate Assets with AI</h3>
-              <p>Create custom images, code snippets, diagrams and documents instantly.</p>
+              <h3>Generate with AI</h3>
+              <p>Create high quality photos, videos or documents with AI models.</p>
               <button
                 type="button"
                 className="choose-files-btn"
                 onClick={() => {
-                  sendMessage("Generate a high quality visual illustration and design mockup for my project.");
+                  sendMessage("Generate an AI creation for my project.");
                   onClose();
                 }}
               >
-                + Generate in Chat
+                + Create with AI
               </button>
             </div>
 
-            <div className="library-section-title">AI Generated Gallery</div>
+            {/* Category Cards */}
+            <div className="library-section-title">Select Category</div>
+            <div className="category-cards-grid">
+              <button
+                type="button"
+                className="category-card"
+                onClick={() => { setCurrentView('ai-images'); setSearchTerm(''); }}
+              >
+                <Image size={26} />
+                <span>Photo</span>
+              </button>
+              <button
+                type="button"
+                className="category-card"
+                onClick={() => { setCurrentView('ai-videos'); setSearchTerm(''); }}
+              >
+                <Video size={26} />
+                <span>Video</span>
+              </button>
+              <button
+                type="button"
+                className="category-card"
+                onClick={() => { setCurrentView('ai-documents'); setSearchTerm(''); }}
+              >
+                <FileText size={26} />
+                <span>File</span>
+              </button>
+            </div>
+
+            {/* Recent Generations Section */}
+            <div className="recent-uploads-header">
+              <strong>Recent Generations</strong>
+              <button
+                type="button"
+                className="see-all-link"
+                onClick={() => setCurrentView('ai-images')}
+              >
+                See all
+              </button>
+            </div>
+
             {files.filter((f) => f.isGenerated).length === 0 ? (
               <div className="empty-uploads-card">
                 <Sparkles size={28} />
-                <span>No AI generated assets yet</span>
+                <span>No AI generations yet</span>
               </div>
             ) : (
               <div className="recent-files-compact-list">
-                {files.filter((f) => f.isGenerated).map((f) => (
+                {files.filter((f) => f.isGenerated).slice(0, 3).map((f) => (
                   <div key={f.id} className="library-file-row">
                     <div className="file-thumbnail">
-                      {f.preview ? <img src={f.preview} alt={f.name} /> : <FileText size={20} />}
+                      {f.preview ? (
+                        <img src={f.preview} alt={f.name} />
+                      ) : (
+                        <FileText size={20} />
+                      )}
                     </div>
                     <div className="file-details">
                       <strong>{f.name}</strong>
-                      <small>Generated · {f.date}</small>
+                      <small>{f.date} · {f.sizeFormatted}</small>
                     </div>
-                    <button className="file-more-btn" onClick={() => handleSendToChat(f)}>
-                      <MessageSquare size={16} />
-                    </button>
+                    <div className="file-actions-anchor">
+                      <button
+                        type="button"
+                        className="file-more-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === f.id ? null : f.id);
+                        }}
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                      {activeMenuId === f.id && (
+                        <div className="file-dropdown-menu">
+                          <button onClick={() => handleSendToChat(f)}>
+                            <MessageSquare size={14} /> Send to Chat
+                          </button>
+                          <button onClick={() => handleDeleteFile(f.id)} style={{ color: '#ef4444' }}>
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* 6. AI CATEGORY SUB-SCREENS: PHOTOS / VIDEOS / FILES          */}
+        {/* ============================================================ */}
+        {(currentView === 'ai-images' || currentView === 'ai-videos' || currentView === 'ai-documents') && (
+          <div className="library-page">
+            <header className="library-sub-header">
+              <button className="library-back-btn" onClick={() => setCurrentView('ai-generate')} aria-label="Back">
+                <ArrowLeft size={20} />
+              </button>
+              <h2>{currentView === 'ai-images' ? 'AI Photos' : currentView === 'ai-videos' ? 'AI Videos' : 'AI Files'}</h2>
+              <div style={{ width: 38 }} />
+            </header>
+
+            {/* Search Bar */}
+            <div className="library-search-wrap">
+              <Search size={18} className="library-search-icon" />
+              <input
+                type="text"
+                placeholder={`Search AI ${currentView.replace('ai-', '')}...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Count header */}
+            <div className="library-list-meta">
+              <span>
+                Recently generated · {filteredCategoryFiles(currentView === 'ai-images' ? 'photo' : currentView === 'ai-videos' ? 'video' : 'file').filter(f => f.isGenerated).length}{' '}
+                {currentView === 'ai-images' ? 'Photos' : currentView === 'ai-videos' ? 'Videos' : 'Files'}
+              </span>
+            </div>
+
+            {/* List of Generated Files */}
+            <div className="library-files-list">
+              {filteredCategoryFiles(currentView === 'ai-images' ? 'photo' : currentView === 'ai-videos' ? 'video' : 'file').filter(f => f.isGenerated).length === 0 ? (
+                <div className="empty-state-box">
+                  <Sparkles size={32} />
+                  <p>No AI {currentView.replace('ai-', '')} generated yet</p>
+                  <button
+                    className="choose-files-btn"
+                    onClick={() => {
+                      sendMessage(`Generate an AI ${currentView === 'ai-images' ? 'image' : currentView === 'ai-videos' ? 'video' : 'document'} for my project.`);
+                      onClose();
+                    }}
+                  >
+                    + Generate in Chat
+                  </button>
+                </div>
+              ) : (
+                filteredCategoryFiles(currentView === 'ai-images' ? 'photo' : currentView === 'ai-videos' ? 'video' : 'file').filter(f => f.isGenerated).map((file) => (
+                  <div key={file.id} className="library-file-row">
+                    <div
+                      className="file-thumbnail"
+                      onClick={() => file.preview && setPreviewItem(file)}
+                      style={{ cursor: file.preview ? 'pointer' : 'default' }}
+                    >
+                      {file.preview ? (
+                        <img src={file.preview} alt={file.name} />
+                      ) : (
+                        <FileText size={22} />
+                      )}
+                    </div>
+                    <div className="file-details">
+                      <strong>{file.name}</strong>
+                      <small>{file.date}</small>
+                      <span className="file-size-badge">{file.sizeFormatted}</span>
+                    </div>
+                    <div className="file-actions-anchor">
+                      <button
+                        type="button"
+                        className="file-more-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === file.id ? null : file.id);
+                        }}
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                      {activeMenuId === file.id && (
+                        <div className="file-dropdown-menu">
+                          {file.preview && (
+                            <button onClick={() => { setPreviewItem(file); setActiveMenuId(null); }}>
+                              <Eye size={14} /> Preview
+                            </button>
+                          )}
+                          <button onClick={() => handleSendToChat(file)}>
+                            <MessageSquare size={14} /> Send to Chat
+                          </button>
+                          <button onClick={() => handleDeleteFile(file.id)} style={{ color: '#ef4444' }}>
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 
