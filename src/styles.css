@@ -138,10 +138,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 
 /* Full-screen code editor */
 .code-editor-screen{position:absolute;inset:0;display:flex;flex-direction:column;min-width:0;min-height:0;background:#fff;color:#1e293b;z-index:40}
-.code-editor-header{height:56px;flex:0 0 56px;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid #e2e8f0;background:#fff}
+.code-editor-header{height:56px;flex:0 0 56px;display:flex;align-items:center;padding:0 18px;border-bottom:none;background:#fff}
 .code-header-icon{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:transparent;color:#555d68;cursor:pointer;transition:all .15s}
 .code-header-icon:hover{background:#f1f5f9;color:#0f172a}
+.code-header-tool-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;font-size:12px;font-weight:550;cursor:pointer;transition:all .15s}
+.code-header-tool-btn:hover{background:#f1f5f9;color:#0f172a;border-color:#cbd5e1}
+.code-header-tool-btn.active{background:color-mix(in srgb,var(--accent-color, #16a34a) 12%,#fff);color:var(--accent-color, #16a34a);border-color:var(--accent-color, #16a34a)}
 .code-header-spacer{flex:1}
+.source-control-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.25);z-index:90;display:flex;align-items:flex-start;justify-content:center;padding-top:70px}
+.source-control-modal{background:#fff;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,0.18);width:360px;max-width:92vw;padding:18px;border:1px solid #e2e8f0;animation:pop-in .15s ease-out}
 
 /* Code Editor Flex Body */
 .code-editor-body{flex:1;min-height:0;display:flex;width:100%;overflow:hidden;background:#fff}

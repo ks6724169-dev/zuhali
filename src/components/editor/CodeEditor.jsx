@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
 import {
-  PanelLeft, MessageCircle, Code2, GitBranch, Check, Plus,
-  Trash2, FolderOpen, MessageSquare, FileCode
+  PanelLeft, SquarePen, Code2, GitBranch, Check, Plus,
+  Trash2, FolderOpen, MessageSquare, FileCode, Monitor, X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 
 export default function CodeEditor({ onClose, onOpenTerminal }) {
   const { user } = useAuth();
-  const { sendMessage } = useChat();
+  const { sendMessage, startNewChat } = useChat();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
 
   // Real user files (ZERO fake demo files!)
@@ -30,7 +30,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
   });
 
   const [explorerOpen, setExplorerOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('Explorer');
+  const [showSourceControl, setShowSourceControl] = useState(false);
   const [activeFile, setActiveFile] = useState(() => Object.keys(files)[0] || null);
   const [fileSearch, setFileSearch] = useState('');
   const [newFilePrompt, setNewFilePrompt] = useState(false);
@@ -157,28 +157,53 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
         <div className="code-header-spacer" />
 
-        {activeFile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
-            className="code-header-icon"
-            title="Ask AI to review this code"
-            style={{ width: 'auto', padding: '0 14px', gap: 7, fontSize: 13, fontWeight: 600, color: 'var(--accent-color, #16a34a)' }}
-            onClick={handleSendToAI}
+            className={`code-header-tool-btn ${showSourceControl ? 'active' : ''}`}
+            title="Source Control"
+            onClick={() => setShowSourceControl((v) => !v)}
           >
-            <MessageSquare size={16} />
-            <span>Review with AI</span>
+            <GitBranch size={15} />
+            <span>Source Control</span>
           </button>
-        )}
 
-        <button
-          className="code-header-icon"
-          type="button"
-          aria-label="Back to chat"
-          title="Back to chat"
-          onClick={onClose}
-        >
-          <MessageCircle size={20} />
-        </button>
+          <button
+            type="button"
+            className="code-header-tool-btn"
+            title="Terminal"
+            onClick={onOpenTerminal}
+          >
+            <Monitor size={15} />
+            <span>Terminal</span>
+          </button>
+
+          {activeFile && (
+            <button
+              type="button"
+              className="code-header-tool-btn"
+              title="Ask AI to review this code"
+              style={{ color: 'var(--accent-color, #16a34a)', borderColor: 'var(--accent-color, #16a34a)' }}
+              onClick={handleSendToAI}
+            >
+              <MessageSquare size={15} />
+              <span>Review with AI</span>
+            </button>
+          )}
+
+          <button
+            className="code-header-icon"
+            type="button"
+            aria-label="New chat"
+            title="New chat / Return to chat"
+            onClick={() => {
+              if (startNewChat) startNewChat();
+              onClose();
+            }}
+          >
+            <SquarePen size={19} />
+          </button>
+        </div>
       </header>
 
       {/* Main Body */}
@@ -186,136 +211,102 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
         {/* Left Sidebar */}
         {explorerOpen && (
           <aside className="code-editor-sidebar">
-            <div className="editor-panel-nav">
-              {['Explorer', 'Source Control', 'Terminal'].map((item) => (
-                <button
-                  type="button"
-                  key={item}
-                  className={activeTab === item ? 'active' : ''}
-                  onClick={() => {
-                    setActiveTab(item);
-                    if (item === 'Terminal') onOpenTerminal();
-                  }}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-
             <div className="explorer-content-wrap">
-              {activeTab === 'Explorer' && (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 8px' }}>
-                    <div className="explorer-project" style={{ padding: 0, fontSize: 11 }}>WORKSPACE FILES</div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        type="button"
-                        title="New File"
-                        onClick={() => setNewFilePrompt(true)}
-                        style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--accent-color, #16a34a)', padding: 2, display: 'flex' }}
-                      >
-                        <Plus size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        title="Open File from Computer"
-                        onClick={() => fileInputRef.current?.click()}
-                        style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 2, display: 'flex' }}
-                      >
-                        <FolderOpen size={18} />
-                      </button>
-                    </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 8px' }}>
+                <div className="explorer-project" style={{ padding: 0, fontSize: 11 }}>WORKSPACE FILES</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    title="New File"
+                    onClick={() => setNewFilePrompt(true)}
+                    style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--accent-color, #16a34a)', padding: 2, display: 'flex' }}
+                  >
+                    <Plus size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Open File from Computer"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 2, display: 'flex' }}
+                  >
+                    <FolderOpen size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {newFilePrompt && (
+                <form onSubmit={handleCreateFile} style={{ padding: '0 12px 10px' }}>
+                  <input
+                    type="text"
+                    autoFocus
+                    className="explorer-search"
+                    style={{ margin: 0, width: '100%' }}
+                    placeholder="filename.py, index.js..."
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    onBlur={() => { if (!newFileName.trim()) setNewFilePrompt(false); }}
+                  />
+                </form>
+              )}
+
+              {fileList.length > 0 && (
+                <input
+                  className="explorer-search"
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                  placeholder="Search files..."
+                />
+              )}
+
+              <div className="explorer-tree">
+                {fileList.length === 0 ? (
+                  <div style={{ padding: '36px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                    <FileCode size={36} style={{ margin: '0 auto 10px', display: 'block', opacity: 0.5 }} />
+                    <p style={{ margin: '0 0 14px', fontWeight: 500 }}>No files in workspace</p>
+                    <button
+                      type="button"
+                      onClick={() => setNewFilePrompt(true)}
+                      style={{
+                        background: 'var(--accent-color, #16a34a)',
+                        color: '#fff',
+                        border: 0,
+                        borderRadius: 10,
+                        padding: '8px 16px',
+                        fontSize: 12.5,
+                        fontWeight: 650,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px color-mix(in srgb, var(--accent-color, #16a34a) 30%, transparent)'
+                      }}
+                    >
+                      + Create File
+                    </button>
                   </div>
-
-                  {newFilePrompt && (
-                    <form onSubmit={handleCreateFile} style={{ padding: '0 12px 10px' }}>
-                      <input
-                        type="text"
-                        autoFocus
-                        className="explorer-search"
-                        style={{ margin: 0, width: '100%' }}
-                        placeholder="filename.py, index.js..."
-                        value={newFileName}
-                        onChange={(e) => setNewFileName(e.target.value)}
-                        onBlur={() => { if (!newFileName.trim()) setNewFilePrompt(false); }}
-                      />
-                    </form>
-                  )}
-
-                  {fileList.length > 0 && (
-                    <input
-                      className="explorer-search"
-                      value={fileSearch}
-                      onChange={(e) => setFileSearch(e.target.value)}
-                      placeholder="Search files..."
-                    />
-                  )}
-
-                  <div className="explorer-tree">
-                    {fileList.length === 0 ? (
-                      <div style={{ padding: '36px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                        <FileCode size={36} style={{ margin: '0 auto 10px', display: 'block', opacity: 0.5 }} />
-                        <p style={{ margin: '0 0 14px', fontWeight: 500 }}>No files in workspace</p>
+                ) : (
+                  fileList
+                    .filter((name) => name.toLowerCase().includes(fileSearch.toLowerCase()))
+                    .map((fileName) => (
+                      <div
+                        key={fileName}
+                        className={`explorer-file ${activeFile === fileName ? 'selected' : ''}`}
+                        onClick={() => setActiveFile(fileName)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <Code2 size={15} style={{ marginRight: 8, opacity: 0.8, flexShrink: 0 }} />
+                          <span>{fileName}</span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setNewFilePrompt(true)}
-                          style={{
-                            background: 'var(--accent-color, #16a34a)',
-                            color: '#fff',
-                            border: 0,
-                            borderRadius: 10,
-                            padding: '8px 16px',
-                            fontSize: 12.5,
-                            fontWeight: 650,
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 8px color-mix(in srgb, var(--accent-color, #16a34a) 30%, transparent)'
-                          }}
+                          title="Delete file"
+                          onClick={(e) => handleDeleteFile(fileName, e)}
+                          style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}
                         >
-                          + Create File
+                          <Trash2 size={14} />
                         </button>
                       </div>
-                    ) : (
-                      fileList
-                        .filter((name) => name.toLowerCase().includes(fileSearch.toLowerCase()))
-                        .map((fileName) => (
-                          <div
-                            key={fileName}
-                            className={`explorer-file ${activeFile === fileName ? 'selected' : ''}`}
-                            onClick={() => setActiveFile(fileName)}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              <Code2 size={15} style={{ marginRight: 8, opacity: 0.8, flexShrink: 0 }} />
-                              <span>{fileName}</span>
-                            </div>
-                            <button
-                              type="button"
-                              title="Delete file"
-                              onClick={(e) => handleDeleteFile(fileName, e)}
-                              style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))
-                    )}
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'Source Control' && (
-                <div style={{ padding: '24px 14px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                  <GitBranch size={32} style={{ margin: '0 auto 10px', color: 'var(--accent-color, #16a34a)', opacity: 0.7 }} />
-                  <strong style={{ display: 'block', color: 'var(--text-primary, #1e293b)', marginBottom: 6 }}>
-                    Git Workspace (main)
-                  </strong>
-                  <p style={{ margin: 0, fontSize: 12 }}>
-                    {fileList.length > 0
-                      ? `${fileList.length} files currently active.`
-                      : 'Workspace is clean. No uncommitted files.'}
-                  </p>
-                </div>
-              )}
+                    ))
+                )}
+              </div>
             </div>
           </aside>
         )}
@@ -412,6 +403,55 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
         style={{ display: 'none' }}
         onChange={handleOpenFileFromDevice}
       />
+
+      {/* Source Control Modal */}
+      {showSourceControl && (
+        <div className="source-control-modal-overlay" onClick={() => setShowSourceControl(false)}>
+          <div className="source-control-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 650, fontSize: 14, color: '#0f172a' }}>
+                <GitBranch size={18} style={{ color: 'var(--accent-color, #16a34a)' }} />
+                <span>Source Control (Git)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSourceControl(false)}
+                style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 4 }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, marginBottom: 18 }}>
+              <p style={{ margin: '0 0 8px' }}>
+                <strong>Branch:</strong> <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>main</code>
+              </p>
+              <p style={{ margin: 0 }}>
+                {fileList.length > 0
+                  ? `${fileList.length} workspace file(s) active and saved in local storage.`
+                  : 'Workspace is clean. No uncommitted files.'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowSourceControl(false)}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  color: '#475569',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
