@@ -1,12 +1,12 @@
 
 /* Zuhali Terminal */
 .zuhali-terminal-screen{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;min-width:0;min-height:0;background:#fff;color:#252a31}
-.zuhali-terminal-header{height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #e8eaed;background:#fff}
+.zuhali-terminal-header{height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:none;background:#fff}
 .zuhali-terminal-name{font-size:14px;font-weight:600;letter-spacing:-.15px;color:#292e35}
 .zuhali-terminal-actions{display:flex;align-items:center;gap:7px}
 .zuhali-terminal-actions button{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#626b76}
 .zuhali-terminal-actions button:hover{background:#f1f2f4;color:#20262e}
-.zuhali-terminal-tabs{height:39px;flex:0 0 39px;display:flex;align-items:stretch;gap:2px;padding:0 12px;border-bottom:1px solid #e8eaed;background:#fafbfc}
+.zuhali-terminal-tabs{height:39px;flex:0 0 39px;display:flex;align-items:stretch;gap:2px;padding:0 12px;border-bottom:none;background:#fafbfc}
 .zuhali-terminal-tabs button{padding:0 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:#707783;font-size:12px}
 .zuhali-terminal-tabs button.active{border-bottom-color:#528a65;background:#fff;color:#303740}
 .zuhali-terminal-body{flex:1;min-height:0;overflow:auto;padding:18px 22px;background:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.8;cursor:text}
