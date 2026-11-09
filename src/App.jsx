@@ -9,6 +9,7 @@ import CodeEditor from './components/editor/CodeEditor';
 import Terminal from './Terminal';
 import FeedbackModal from './components/chat/FeedbackModal';
 import RenameModal from './components/chat/RenameModal';
+import LibraryScreen from './features/library/LibraryScreen';
 import {
   SettingsScreen,
   AppearanceScreen,
@@ -63,6 +64,8 @@ function MainAppShell() {
         <BillingScreen onClose={() => setActiveScreen(null)} />
       ) : activeScreen === 'help' ? (
         <HelpScreen onClose={() => setActiveScreen(null)} />
+      ) : activeScreen === 'library' ? (
+        <LibraryScreen onClose={() => setActiveScreen(null)} />
       ) : (
         <>
           <Sidebar
@@ -72,6 +75,7 @@ function MainAppShell() {
             onOpenSettings={() => setActiveScreen('settings')}
             onOpenBilling={() => setActiveScreen('billing')}
             onOpenHelp={() => setActiveScreen('help')}
+            onOpenLibrary={() => setActiveScreen('library')}
           />
           <ChatWorkspace
             onToggleSidebar={() => setSidebarOpen((v) => !v)}

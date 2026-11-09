@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
   SquarePen, Search, MessageSquare, UserRound, Settings,
-  CreditCard, CircleHelp, LogOut, MoreHorizontal, Pin
+  CreditCard, CircleHelp, LogOut, MoreHorizontal, Pin, FolderKanban
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,7 +12,8 @@ export default function Sidebar({
   onOpenProfile,
   onOpenSettings,
   onOpenBilling,
-  onOpenHelp
+  onOpenHelp,
+  onOpenLibrary
 }) {
   const { conversations, activeConvId, selectChat, startNewChat } = useChat();
   const { user, logout } = useAuth();
@@ -61,6 +62,16 @@ export default function Sidebar({
           >
             <SquarePen size={18} />
             <span>New Chat</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onOpenLibrary();
+              onClose();
+            }}
+          >
+            <FolderKanban size={18} />
+            <span>Library</span>
           </button>
           <button type="button" onClick={() => setSearchOpen((v) => !v)}>
             <Search size={18} />
