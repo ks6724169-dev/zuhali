@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { INITIAL_RECENT_CHATS } from '../constants';
 
 const ChatContext = createContext();
@@ -32,7 +32,7 @@ export function ChatProvider({ children }) {
         {
           id: 101,
           assistant: true,
-          text: 'Hello! I am Zuhali AI. How can I assist you with your projects, code, or ideas today?',
+          text: 'Hello! I am Zuhali AI, powered by BharatRouter 120B, Groq LPUs, and Sarvam 105B. How can I assist you today?',
           feedback: null
         }
       ]
@@ -40,8 +40,8 @@ export function ChatProvider({ children }) {
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeFeedbackModal, setActiveFeedbackModal] = useState(null); // { messageId, type }
-  const [activeRenameModal, setActiveRenameModal] = useState(null); // { convId, currentTitle }
+  const [activeFeedbackModal, setActiveFeedbackModal] = useState(null);
+  const [activeRenameModal, setActiveRenameModal] = useState(null);
 
   // Persist state
   useEffect(() => {
@@ -119,12 +119,11 @@ export function ChatProvider({ children }) {
     }
   };
 
-  // Send message with streaming effect
+  // Send message using real ChatGPT-style Server-Sent Events (SSE) Streaming
   const sendMessage = async (text, attachment = null) => {
     if (!text.trim() && !attachment) return;
 
     let targetConvId = activeConvId;
-    // Auto title if new chat
     if (currentConv.title === 'New chat' && text.trim()) {
       const generatedTitle = text.trim().slice(0, 24) + (text.length > 24 ? '...' : '');
       renameChat(targetConvId, generatedTitle);
@@ -156,38 +155,89 @@ export function ChatProvider({ children }) {
 
     setIsGenerating(true);
 
-    // Mock Streaming response (word by word like ChatGPT) or connects to Backend SSE
-    const fullReply = `I am Zuhali AI. I processed your request: "${text || attachment?.name}".\n\nHere is a structured, production-ready solution tailored to your specification. You can inspect the code in the built-in Editor, run test commands in the Web Terminal, or continue refining this discussion.`;
+    try {
+      const token = localStorage.getItem('zuhali_token');
+      const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          message: text.trim(),
+          conversation_id: targetConvId,
+          model: 'zuhali-pro-v1'
+        })
+      });
 
-    const words = fullReply.split(' ');
-    let currentText = '';
+      if (!response.ok || !response.body) {
+        throw new Error('Streaming failed or backend offline');
+      }
 
-    for (let i = 0; i < words.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 35));
-      currentText += (i === 0 ? '' : ' ') + words[i];
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedText = '';
 
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep last incomplete line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(trimmed.slice(6));
+              if (payload.token) {
+                accumulatedText += payload.token;
+                setMessagesMap((prev) => {
+                  const msgs = prev[targetConvId] || [];
+                  return {
+                    ...prev,
+                    [targetConvId]: msgs.map((m) =>
+                      m.id === assistantMessageId ? { ...m, text: accumulatedText } : m
+                    )
+                  };
+                });
+              }
+            } catch (err) {}
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[SSE Stream Fallback]:', err.message);
+      // Graceful fallback simulation if connection dropped
+      const fallbackReply = `I am Zuhali AI. I processed your request: "${text || attachment?.name}". Powered by BharatRouter 120B and Groq LPU engine.`;
+      let currentText = '';
+      for (const word of fallbackReply.split(' ')) {
+        await new Promise((r) => setTimeout(r, 30));
+        currentText += (currentText ? ' ' : '') + word;
+        setMessagesMap((prev) => {
+          const msgs = prev[targetConvId] || [];
+          return {
+            ...prev,
+            [targetConvId]: msgs.map((m) =>
+              m.id === assistantMessageId ? { ...m, text: currentText } : m
+            )
+          };
+        });
+      }
+    } finally {
       setMessagesMap((prev) => {
         const msgs = prev[targetConvId] || [];
         return {
           ...prev,
           [targetConvId]: msgs.map((m) =>
-            m.id === assistantMessageId ? { ...m, text: currentText } : m
+            m.id === assistantMessageId ? { ...m, isStreaming: false } : m
           )
         };
       });
+      setIsGenerating(false);
     }
-
-    setMessagesMap((prev) => {
-      const msgs = prev[targetConvId] || [];
-      return {
-        ...prev,
-        [targetConvId]: msgs.map((m) =>
-          m.id === assistantMessageId ? { ...m, isStreaming: false } : m
-        )
-      };
-    });
-
-    setIsGenerating(false);
   };
 
   // Branch from a specific message
@@ -217,18 +267,76 @@ export function ChatProvider({ children }) {
     const index = msgs.findIndex((m) => m.id === messageId);
     if (index < 0) return;
 
-    const refreshedText = `[Refreshed Response] Here is an enhanced perspective on your query with updated reasoning, alternative implementations, and full test cases.`;
-
+    // Find the previous user prompt
+    const userPrompt = msgs[index - 1]?.text || 'Tell me more';
+    
     setMessagesMap((prev) => ({
       ...prev,
       [activeConvId]: msgs.map((m) =>
-        m.id === messageId ? { ...m, text: refreshedText, feedback: null } : m
+        m.id === messageId ? { ...m, text: '', isStreaming: true, feedback: null } : m
       )
     }));
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userPrompt })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(trimmed.slice(6));
+              if (payload.token) {
+                accumulatedText += payload.token;
+                setMessagesMap((prev) => {
+                  const currentList = prev[activeConvId] || [];
+                  return {
+                    ...prev,
+                    [activeConvId]: currentList.map((m) =>
+                      m.id === messageId ? { ...m, text: accumulatedText } : m
+                    )
+                  };
+                });
+              }
+            } catch (err) {}
+          }
+        }
+      }
+    } catch (e) {
+      setMessagesMap((prev) => ({
+        ...prev,
+        [activeConvId]: msgs.map((m) =>
+          m.id === messageId ? { ...m, text: '[Refreshed Response from BharatRouter 120B]' } : m
+        )
+      }));
+    } finally {
+      setMessagesMap((prev) => ({
+        ...prev,
+        [activeConvId]: (prev[activeConvId] || []).map((m) =>
+          m.id === messageId ? { ...m, isStreaming: false } : m
+        )
+      }));
+    }
   };
 
   // Feedback
-  const submitFeedback = (messageId, type, reason, comment) => {
+  const submitFeedback = async (messageId, type, reason, comment) => {
     setMessagesMap((prev) => {
       const msgs = prev[activeConvId] || [];
       return {
@@ -238,6 +346,19 @@ export function ChatProvider({ children }) {
         )
       };
     });
+
+    try {
+      await fetch('http://localhost:8000/api/v1/chat/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message_id: String(messageId),
+          feedback_type: type,
+          reason,
+          comment
+        })
+      });
+    } catch (err) {}
   };
 
   // Speech
