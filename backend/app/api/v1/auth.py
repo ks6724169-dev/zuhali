@@ -17,7 +17,7 @@ from app.core.security import create_access_token, get_password_hash, verify_pas
 
 router = APIRouter(prefix="/auth", tags=["Authentication & OTP"])
 
-# In-memory user database (also can sync with Supabase profiles)
+# In-memory user database { email: { name, email, hashed_password, verified } }
 _USERS_DB = {}
 
 @router.post("/send-otp")
@@ -47,40 +47,15 @@ async def send_otp_endpoint(req: SendOtpRequest):
         "recipient": recipient
     }
 
-@router.post("/verify-otp")
-async def verify_otp_endpoint(req: VerifyOtpRequest):
-    """
-    Verify entered 6-digit OTP and generate JWT authentication token.
-    """
-    ok, msg = verify_stored_otp(req.recipient, req.otp)
-    if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=msg
-        )
-
-    # Issue access token
-    access_token = create_access_token(subject=req.recipient)
-    
-    return {
-        "status": "success",
-        "message": "OTP verified successfully.",
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "email": req.recipient,
-            "name": req.recipient.split("@")[0]
-        }
-    }
-
 @router.post("/signup")
 async def signup_endpoint(req: SignupRequest):
     """
-    Register a new user and dispatch a verification OTP to their email.
+    Register a new user in pending state and dispatch an OTP to their email.
+    Account is NOT active until OTP is verified!
     """
     email_key = req.email.lower().strip()
-    
-    # Store user in pending/verified database
+
+    # Store user with verified=False
     _USERS_DB[email_key] = {
         "name": req.name,
         "email": email_key,
@@ -91,7 +66,7 @@ async def signup_endpoint(req: SignupRequest):
     # Dispatch email OTP via Gmail SMTP (SSL 465)
     otp = generate_otp()
     ok, msg = send_email_otp(email_key, otp, "account registration")
-    
+
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -100,27 +75,75 @@ async def signup_endpoint(req: SignupRequest):
 
     return {
         "status": "success",
-        "message": f"Account created! 6-digit verification code sent to {email_key}.",
-        "email": email_key
+        "message": f"Verification code sent to {email_key}. Please enter the 6-digit code to activate your account.",
+        "email": email_key,
+        "requires_otp": True
+    }
+
+@router.post("/verify-otp")
+async def verify_otp_endpoint(req: VerifyOtpRequest):
+    """
+    Verify 6-digit OTP. Only after this does the account become verified and active!
+    """
+    email_key = req.recipient.lower().strip()
+    ok, msg = verify_stored_otp(email_key, req.otp)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg
+        )
+
+    # Activate user
+    user = _USERS_DB.get(email_key)
+    if user:
+        user["verified"] = True
+        user_name = user["name"]
+    else:
+        user_name = email_key.split("@")[0]
+
+    # Issue access token
+    access_token = create_access_token(subject=email_key)
+
+    return {
+        "status": "success",
+        "message": "Account verified and activated successfully!",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "email": email_key,
+            "name": user_name
+        }
     }
 
 @router.post("/login")
 async def login_endpoint(req: LoginRequest):
     """
-    Authenticate user credentials and issue a JWT token.
+    Authenticate user credentials.
+    CRITICAL: Rejects unverified accounts! If not verified, triggers OTP and requires verification.
     """
     email_key = req.email.lower().strip()
     user = _USERS_DB.get(email_key)
 
-    if user:
-        if not verify_password(req.password, user["hashed_password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password."
-            )
-        name = user["name"]
-    else:
-        name = email_key.split("@")[0]
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account not found. Please create an account first."
+        )
+
+    if not verify_password(req.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password."
+        )
+
+    # Enforce OTP verification before allowing into the app
+    if not user.get("verified", False):
+        otp = generate_otp()
+        send_email_otp(email_key, otp, "account verification")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is not verified yet. A fresh OTP has been sent to your email. Please verify to log in."
+        )
 
     access_token = create_access_token(subject=email_key)
 
@@ -130,7 +153,7 @@ async def login_endpoint(req: LoginRequest):
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "name": name,
+            "name": user["name"],
             "email": email_key
         }
     }
@@ -140,9 +163,17 @@ async def forgot_password_endpoint(req: ForgotPasswordRequest):
     """
     Dispatch password recovery OTP.
     """
+    email_key = req.email.lower().strip()
+    user = _USERS_DB.get(email_key)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email."
+        )
+
     otp = generate_otp()
-    ok, msg = send_email_otp(req.email.strip(), otp, "password reset")
-    
+    ok, msg = send_email_otp(email_key, otp, "password reset")
+
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -151,8 +182,8 @@ async def forgot_password_endpoint(req: ForgotPasswordRequest):
 
     return {
         "status": "success",
-        "message": f"Password reset code sent to {req.email.strip()}.",
-        "email": req.email
+        "message": f"Password reset code sent to {email_key}.",
+        "email": email_key
     }
 
 @router.post("/reset-password")
@@ -160,14 +191,14 @@ async def reset_password_endpoint(req: ResetPasswordRequest):
     """
     Verify OTP and update user password.
     """
-    ok, msg = verify_stored_otp(req.email, req.otp)
+    email_key = req.email.lower().strip()
+    ok, msg = verify_stored_otp(email_key, req.otp)
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=msg
         )
 
-    email_key = req.email.lower().strip()
     if email_key in _USERS_DB:
         _USERS_DB[email_key]["hashed_password"] = get_password_hash(req.new_password)
 

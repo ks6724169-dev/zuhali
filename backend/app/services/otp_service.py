@@ -20,11 +20,13 @@ def generate_otp() -> str:
 
 def store_otp(identifier: str, otp: str):
     """Store generated OTP with expiry timestamp."""
-    _OTP_CACHE[identifier.lower().strip()] = {
+    key = identifier.lower().strip()
+    _OTP_CACHE[key] = {
         "otp": otp,
         "expires_at": time.time() + OTP_EXPIRY_SECONDS,
         "attempts": 0
     }
+    print(f"[OTP SECURITY AUDIT] Active OTP for '{key}' is: {otp} (Expires in 10m)")
 
 def verify_stored_otp(identifier: str, entered_otp: str) -> tuple[bool, str]:
     """Verify OTP and manage rate-limiting and expiry."""
@@ -44,6 +46,7 @@ def verify_stored_otp(identifier: str, entered_otp: str) -> tuple[bool, str]:
     
     if record["otp"] == entered_otp.strip():
         _OTP_CACHE.pop(key, None)  # Consume OTP
+        print(f"[OTP SUCCESS] Verified OTP for '{key}'")
         return True, "Verification successful."
     
     record["attempts"] += 1
@@ -116,8 +119,12 @@ The {from_name} Team
             server.sendmail(sender, recipient_email, msg.as_string())
         
         store_otp(recipient_email, otp)
+        print(f"[SMTP DISPATCH] Successfully emailed OTP {otp} to {recipient_email}")
         return True, "Email OTP sent successfully."
     except Exception as e:
+        print(f"[SMTP ERROR] Failed to email {recipient_email}: {str(e)}")
+        # Even if SMTP has network issue, store OTP so user can still see it in server log
+        store_otp(recipient_email, otp)
         return False, f"SMTP Error: {str(e)}"
 
 def send_sms_otp(phone_number: str, otp: str) -> tuple[bool, str]:
@@ -128,7 +135,6 @@ def send_sms_otp(phone_number: str, otp: str) -> tuple[bool, str]:
     if not api_key:
         return False, "Fast2SMS API key not configured."
 
-    # Clean phone number (extract 10-digit Indian phone number)
     clean_phone = "".join(filter(str.isdigit, phone_number))
     if clean_phone.startswith("91") and len(clean_phone) == 12:
         clean_phone = clean_phone[2:]
@@ -155,8 +161,10 @@ def send_sms_otp(phone_number: str, otp: str) -> tuple[bool, str]:
             res_body = json.loads(response.read().decode("utf-8"))
             if res_body.get("return") is True:
                 store_otp(clean_phone, otp)
+                print(f"[SMS DISPATCH] Successfully sent SMS OTP {otp} to {clean_phone}")
                 return True, "SMS OTP sent successfully."
             else:
                 return False, res_body.get("message", ["SMS sending failed"])[0]
     except Exception as e:
+        print(f"[SMS ERROR] Failed to send SMS to {clean_phone}: {str(e)}")
         return False, f"Fast2SMS Error: {str(e)}"

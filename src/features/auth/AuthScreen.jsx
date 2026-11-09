@@ -18,7 +18,6 @@ export default function AuthScreen() {
     sendOtp,
     verifyOtp,
     resetPassword,
-    bypassToApp,
     user,
     updateProfile
   } = useAuth();
@@ -35,7 +34,7 @@ export default function AuthScreen() {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      setAuthNotice('Please fill in both email and password.');
+      setAuthNotice('Please enter both email and password.');
       return;
     }
     await login(email, password);
@@ -54,18 +53,22 @@ export default function AuthScreen() {
     await signup(name, email, password);
   };
 
-  const handleVerifySubmit = (e) => {
+  const handleVerifySubmit = async (e) => {
     e.preventDefault();
-    verifyOtp(verifyCode);
+    if (!verifyCode || verifyCode.length !== 6) {
+      setAuthNotice('Please enter the 6-digit code received in your email.');
+      return;
+    }
+    await verifyOtp(verifyCode);
   };
 
-  const handleForgotSubmit = (e) => {
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
     if (!email) {
       setAuthNotice('Please enter your email.');
       return;
     }
-    resetPassword(email);
+    await resetPassword(email);
   };
 
   const handleProfileSubmit = (e) => {
@@ -162,9 +165,7 @@ export default function AuthScreen() {
               <button
                 className="auth-google"
                 type="button"
-                onClick={() => {
-                  login('google.user@zuhali.ai', 'google_auth');
-                }}
+                onClick={() => setAuthNotice('Google OAuth requires production setup. Please log in with your email.')}
               >
                 <b>G</b> Continue with Google
               </button>
@@ -179,15 +180,6 @@ export default function AuthScreen() {
                 </button>
               </p>
 
-              <button
-                type="button"
-                className="auth-preview-link"
-                onClick={bypassToApp}
-                style={{ fontWeight: 600, color: 'var(--accent-color)' }}
-              >
-                ⚡ Explore App as Guest / Direct Demo →
-              </button>
-
               {authNotice && <div className="auth-notice" role="status">{authNotice}</div>}
             </form>
           )}
@@ -197,7 +189,7 @@ export default function AuthScreen() {
             <form className="auth-card" onSubmit={handleSignupSubmit}>
               <div className="auth-eyebrow">GET STARTED</div>
               <h1>Create your account</h1>
-              <p className="auth-description">A few details to get your Zuhali journey started.</p>
+              <p className="auth-description">A verification code will be sent to your email to activate your account.</p>
 
               <label className="auth-field-label" htmlFor="signup-name">Full name</label>
               <div className="auth-input-wrap">
@@ -278,16 +270,7 @@ export default function AuthScreen() {
               </label>
 
               <button className="auth-primary" type="submit" disabled={authLoading}>
-                {authLoading ? 'Creating account & sending OTP...' : 'Create Account'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-              </button>
-
-              <div className="auth-or"><span />or sign up with<span /></div>
-              <button
-                className="auth-google"
-                type="button"
-                onClick={() => login('google.user@zuhali.ai', 'google_oauth')}
-              >
-                <b>G</b> Sign up with Google
+                {authLoading ? 'Sending OTP code...' : 'Create Account & Get OTP'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
               </button>
 
               <p className="auth-switch">
@@ -336,7 +319,7 @@ export default function AuthScreen() {
               </div>
 
               <button className="auth-primary" type="submit" disabled={authLoading}>
-                {authLoading ? 'Verifying...' : 'Verify & Continue'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
+                {authLoading ? 'Verifying OTP...' : 'Verify & Enter Workspace'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
               </button>
 
               <button
@@ -370,7 +353,7 @@ export default function AuthScreen() {
               <div className="auth-icon-tile"><Mail size={23} /></div>
               <div className="auth-eyebrow">ACCOUNT RECOVERY</div>
               <h1>Forgot password?</h1>
-              <p className="auth-description">Enter the email linked to your account. We'll send a password reset link.</p>
+              <p className="auth-description">Enter the email linked to your account. We'll send a password reset code.</p>
 
               <label className="auth-field-label" htmlFor="reset-email">Email address</label>
               <div className="auth-input-wrap">
@@ -385,8 +368,8 @@ export default function AuthScreen() {
                 />
               </div>
 
-              <button className="auth-primary" type="submit">
-                Send reset link <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
+              <button className="auth-primary" type="submit" disabled={authLoading}>
+                {authLoading ? 'Sending code...' : 'Send reset code'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
               </button>
 
               {authNotice && <div className="auth-notice" role="status">{authNotice}</div>}

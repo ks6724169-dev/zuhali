@@ -17,17 +17,12 @@ export function AuthProvider({ children }) {
   const [authNotice, setAuthNotice] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // 1. LOGIN
+  // 1. STRICT LOGIN
   const login = async (email, password) => {
     setAuthLoading(true);
     setAuthNotice('');
     try {
-      let data = null;
-      try {
-        data = await authApi.login(email, password);
-      } catch (e) {
-        console.warn('Backend login fallback:', e.message);
-      }
+      const data = await authApi.login(email, password);
 
       const profile = {
         id: data?.user?.id || 'usr_' + Date.now(),
@@ -45,14 +40,22 @@ export function AuthProvider({ children }) {
       setAuthView('app');
       return { success: true };
     } catch (err) {
-      setAuthNotice(err.message || 'Login failed');
-      return { success: false, error: err.message };
+      const errorMsg = err.message || 'Login failed';
+      // If unverified, send to verification screen immediately!
+      if (errorMsg.toLowerCase().includes('not verified') || errorMsg.toLowerCase().includes('otp')) {
+        setPendingEmail(email);
+        setAuthView('verify');
+        setAuthNotice(errorMsg);
+      } else {
+        setAuthNotice(errorMsg);
+      }
+      return { success: false, error: errorMsg };
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // 2. SIGNUP (Dispatches live OTP via Gmail SMTP)
+  // 2. STRICT SIGNUP (Requires Email OTP verification to activate)
   const signup = async (name, email, password) => {
     setAuthLoading(true);
     setAuthNotice('');
@@ -60,6 +63,7 @@ export function AuthProvider({ children }) {
     try {
       const res = await authApi.signup(name, email, password);
       setAuthNotice(res.message || `Verification code sent to ${email}`);
+      // Send directly to OTP verification view!
       setAuthView('verify');
       return { success: true };
     } catch (err) {
@@ -90,7 +94,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // 4. VERIFY OTP
+  // 4. STRICT VERIFY OTP (No access granted without valid OTP)
   const verifyOtp = async (code) => {
     if (!code || code.length !== 6) {
       setAuthNotice('Please enter a valid 6-digit code');
@@ -99,7 +103,14 @@ export function AuthProvider({ children }) {
 
     setAuthLoading(true);
     setAuthNotice('');
-    const recipient = pendingEmail || user?.email || 'user@zuhali.ai';
+    const recipient = pendingEmail;
+
+    if (!recipient) {
+      setAuthNotice('Session expired. Please sign up or log in again.');
+      setAuthView('signup');
+      setAuthLoading(false);
+      return false;
+    }
 
     try {
       const res = await authApi.verifyOtp(recipient, code);
@@ -114,9 +125,10 @@ export function AuthProvider({ children }) {
         avatar: '',
         createdAt: new Date().toISOString()
       };
+
       setUser(profile);
       localStorage.setItem('zuhali_user', JSON.stringify(profile));
-      setAuthView('app');
+      setAuthView('app'); // ONLY now enter workspace!
       return true;
     } catch (err) {
       const errorMsg = err.message || 'OTP verification failed';
@@ -158,15 +170,6 @@ export function AuthProvider({ children }) {
     setAuthView('login');
   };
 
-  const bypassToApp = () => {
-    if (!user) {
-      const guest = { id: 'guest_' + Date.now(), name: 'Explorer', email: 'guest@zuhali.ai' };
-      setUser(guest);
-      localStorage.setItem('zuhali_user', JSON.stringify(guest));
-    }
-    setAuthView('app');
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -185,7 +188,6 @@ export function AuthProvider({ children }) {
         resetPassword,
         updateProfile,
         logout,
-        bypassToApp,
         isAuthenticated: !!user && authView === 'app'
       }}
     >
