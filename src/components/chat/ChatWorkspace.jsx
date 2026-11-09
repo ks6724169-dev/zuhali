@@ -100,6 +100,38 @@ export default function ChatWorkspace({
     inputRef.current?.focus();
   };
 
+  const processSelectedFile = (file) => {
+    if (!file) return;
+    const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
+    const reader = new FileReader();
+
+    if (isImage) {
+      reader.onload = () => {
+        setAttachment({
+          name: file.name,
+          type: file.type || 'image/png',
+          size: file.size,
+          dataUrl: reader.result,
+          preview: reader.result,
+          isImage: true
+        });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => {
+        setAttachment({
+          name: file.name,
+          type: file.type || 'text/plain',
+          size: file.size,
+          textContent: typeof reader.result === 'string' ? reader.result : '',
+          preview: null,
+          isImage: false
+        });
+      };
+      reader.readAsText(file);
+    }
+  };
+
   return (
     <>
       {/* TOPBAR */}
@@ -276,10 +308,21 @@ export default function ChatWorkspace({
                     >
                       {message.text && <p>{message.text}</p>}
                       {message.attachment && (
-                        <div className="attached-file">
-                          <Folder size={15} />
-                          {message.attachment}
-                        </div>
+                        message.attachmentData && (message.attachmentType?.startsWith('image/') || message.attachmentData.startsWith('data:image/')) ? (
+                          <div className="attached-image-card" style={{ marginBottom: '8px' }}>
+                            <img
+                              src={message.attachmentData}
+                              alt={message.attachment}
+                              style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '10px', objectFit: 'cover', display: 'block', border: '1px solid rgba(255,255,255,0.2)' }}
+                            />
+                            <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '4px' }}>{message.attachment}</div>
+                          </div>
+                        ) : (
+                          <div className="attached-file" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'rgba(0,0,0,0.18)', borderRadius: '8px', marginBottom: '6px', fontSize: '12px' }}>
+                            <Folder size={15} />
+                            <span>{message.attachment}</span>
+                          </div>
+                        )
                       )}
                     </div>
                     {activeUserMenu === message.id && (
@@ -303,10 +346,31 @@ export default function ChatWorkspace({
       {/* COMPOSER */}
       <div className="composer-wrap">
         {attachment && (
-          <div className="attachment-chip">
-            <Folder size={14} />
-            <span>{attachment.name}</span>
-            <button onClick={() => setAttachment(null)} aria-label="Remove attachment">
+          <div className="attachment-chip" style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 12px',
+            background: 'var(--surface-active, rgba(22, 163, 74, 0.12))',
+            border: '1px solid var(--accent-color, #16a34a)',
+            borderRadius: '10px',
+            marginBottom: '8px',
+            fontSize: '12px'
+          }}>
+            {attachment.isImage && attachment.preview ? (
+              <img src={attachment.preview} alt="preview" style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover' }} />
+            ) : (
+              <Folder size={15} />
+            )}
+            <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {attachment.name}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAttachment(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px', display: 'flex' }}
+              aria-label="Remove attachment"
+            >
               <X size={14} />
             </button>
           </div>
@@ -451,7 +515,10 @@ export default function ChatWorkspace({
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) setAttachment(file);
+          if (file) {
+            processSelectedFile(file);
+            e.target.value = '';
+          }
         }}
       />
       <input
@@ -462,7 +529,10 @@ export default function ChatWorkspace({
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) setAttachment(file);
+          if (file) {
+            processSelectedFile(file);
+            e.target.value = '';
+          }
         }}
       />
     </>

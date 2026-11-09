@@ -9,10 +9,14 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def chat_stream(req: ChatStreamRequest):
     """
     ChatGPT-like Server-Sent Events (SSE) streaming endpoint.
-    Supports full multi-turn conversation memory history!
+    Supports:
+    - Multi-turn conversation memory history
+    - Multimodal image analysis (OCR, Vision, Charts, UI)
+    - File code & document extraction and analysis
     """
+    prompt = req.message or ""
     return StreamingResponse(
-        generate_ai_stream(req.message, req.model, req.messages),
+        generate_ai_stream(prompt, req.model, req.messages, req.attachment),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

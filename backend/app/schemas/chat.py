@@ -7,8 +7,9 @@ class ChatMessage(BaseModel):
 
 class ChatStreamRequest(BaseModel):
     conversation_id: Optional[str] = None
-    message: str = Field(..., min_length=1, max_length=10000)
+    message: Optional[str] = ""
     messages: Optional[List[Dict[str, Any]]] = None
+    attachment: Optional[Dict[str, Any]] = None
     model: Optional[str] = "zuhali-pro-v1"
     system_prompt: Optional[str] = None
 

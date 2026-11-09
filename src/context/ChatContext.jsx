@@ -188,11 +188,20 @@ export function ChatProvider({ children }) {
     });
 
     const userMessageId = Date.now();
+    const attachmentPayload = attachment ? {
+      name: attachment.name,
+      type: attachment.type,
+      dataUrl: attachment.dataUrl || null,
+      textContent: attachment.textContent || null
+    } : null;
+
     const userMessage = {
       id: userMessageId,
       assistant: false,
       text: text.trim(),
       attachment: attachment ? attachment.name : null,
+      attachmentType: attachment ? attachment.type : null,
+      attachmentData: attachment ? (attachment.dataUrl || null) : null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -224,6 +233,7 @@ export function ChatProvider({ children }) {
         body: JSON.stringify({
           message: text.trim(),
           messages: historyPayload,
+          attachment: attachmentPayload,
           conversation_id: targetConvId,
           model: 'zuhali-pro-v1'
         })
