@@ -613,22 +613,29 @@ export default function LibraryScreen({ onClose }) {
             </div>
 
             <div className="library-section-title">AI Generated Gallery</div>
-            <div className="recent-files-compact-list">
-              {files.filter((f) => f.name.includes('Logo') || f.name.includes('Design')).map((f) => (
-                <div key={f.id} className="library-file-row">
-                  <div className="file-thumbnail">
-                    {f.preview ? <img src={f.preview} alt={f.name} /> : <FileText size={20} />}
+            {files.filter((f) => f.isGenerated).length === 0 ? (
+              <div className="empty-uploads-card">
+                <Sparkles size={28} />
+                <span>No AI generated assets yet</span>
+              </div>
+            ) : (
+              <div className="recent-files-compact-list">
+                {files.filter((f) => f.isGenerated).map((f) => (
+                  <div key={f.id} className="library-file-row">
+                    <div className="file-thumbnail">
+                      {f.preview ? <img src={f.preview} alt={f.name} /> : <FileText size={20} />}
+                    </div>
+                    <div className="file-details">
+                      <strong>{f.name}</strong>
+                      <small>Generated · {f.date}</small>
+                    </div>
+                    <button className="file-more-btn" onClick={() => handleSendToChat(f)}>
+                      <MessageSquare size={16} />
+                    </button>
                   </div>
-                  <div className="file-details">
-                    <strong>{f.name}</strong>
-                    <small>Generated · {f.date}</small>
-                  </div>
-                  <button className="file-more-btn" onClick={() => handleSendToChat(f)}>
-                    <MessageSquare size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
