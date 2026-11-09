@@ -251,7 +251,9 @@ def get_default_project_template(project_name: str, prompt: str) -> Dict[str, st
 
 async def generate_developer_agent_stream(
     prompt: str,
-    user_email: Optional[str] = None
+    user_email: Optional[str] = None,
+    project_name: Optional[str] = None,
+    project_title: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
     """
     Autonomous Developer Agent Generator.
@@ -265,25 +267,26 @@ async def generate_developer_agent_stream(
         if user_email else "guest_developer"
     )
 
-    project_name = extract_project_name(prompt)
-    target_dir = WORKSPACE_ROOT / user_key / project_name
+    proj_slug = slugify(project_name) if project_name else extract_project_name(prompt)
+    target_dir = WORKSPACE_ROOT / user_key / proj_slug
 
     # Step 1: Initializing Agent
-    yield f"data: {json.dumps({'type': 'dev_step', 'step': 'init', 'title': 'Initializing Developer Agent', 'details': f'Analyzing project architecture for: \"{prompt[:60]}\"', 'icon': 'bot', 'status': 'done'})}\n\n"
+    display_title = project_title or proj_slug
+    yield f"data: {json.dumps({'type': 'dev_step', 'step': 'init', 'title': 'Initializing Developer Agent', 'details': f'Project \"{display_title}\" • Analyzing requirements for: \"{prompt[:60]}\"', 'icon': 'bot', 'status': 'done'})}\n\n"
     await asyncio.sleep(0.4)
 
     # Step 2: Create directory on real disk
     try:
         os.makedirs(target_dir, exist_ok=True)
-        folder_display = f"workspace/projects/{user_key}/{project_name}/"
+        folder_display = f"workspace/projects/{user_key}/{proj_slug}/"
     except Exception as e:
-        folder_display = f"workspace/projects/{project_name}/"
+        folder_display = f"workspace/projects/{proj_slug}/"
 
     yield f"data: {json.dumps({'type': 'dev_step', 'step': 'mkdir', 'title': 'Created Project Workspace', 'details': folder_display, 'icon': 'folder', 'status': 'done'})}\n\n"
     await asyncio.sleep(0.4)
 
     # Step 3: Generate Files
-    files_dict = get_default_project_template(project_name, prompt)
+    files_dict = get_default_project_template(proj_slug, prompt)
 
     # Write each file to disk and stream activity
     created_files_map = {}
@@ -296,7 +299,7 @@ async def generate_developer_agent_stream(
             print(f"[DevAgent Disk Write Warning]: {e}")
 
         # Store with project prefix for editor workspace
-        editor_key = f"{project_name}/{filename}"
+        editor_key = f"{proj_slug}/{filename}"
         created_files_map[editor_key] = content
 
         yield f"data: {json.dumps({'type': 'dev_step', 'step': 'file_write', 'title': f'Writing {filename}', 'details': f'{len(content)} bytes • Ready', 'path': editor_key, 'icon': 'file-code', 'status': 'done'})}\n\n"
@@ -305,17 +308,17 @@ async def generate_developer_agent_stream(
     # Step 4: Terminal Command Simulation & Logging
     is_python = "main.py" in files_dict
     if is_python:
-        cmd = f"python {project_name}/main.py"
-        output = f"[Zuhali Shell] Loaded {project_name}/main.py\nFastAPI Application initialized.\nServing on http://127.0.0.1:8080 (Press CTRL+C to quit)"
+        cmd = f"python {proj_slug}/main.py"
+        output = f"[Zuhali Shell] Loaded {proj_slug}/main.py\nFastAPI Application initialized.\nServing on http://127.0.0.1:8080 (Press CTRL+C to quit)"
     else:
-        cmd = f"python -m http.server 3000 --directory {project_name}"
+        cmd = f"python -m http.server 3000 --directory {proj_slug}"
         output = f"[Zuhali Shell] Serving HTTP on 0.0.0.0 port 3000 (http://localhost:3000/) ...\n127.0.0.1 - GET /index.html 200 OK"
 
     yield f"data: {json.dumps({'type': 'dev_step', 'step': 'terminal', 'title': 'Executed in Terminal', 'command': cmd, 'output': output, 'icon': 'terminal', 'status': 'done'})}\n\n"
     await asyncio.sleep(0.4)
 
     terminal_logs = [
-        f"zuhali $ cd {project_name}",
+        f"zuhali $ cd {proj_slug}",
         f"zuhali $ ls -la",
         f"total {len(files_dict)} files created in {target_dir}",
         f"zuhali $ {cmd}",
@@ -323,15 +326,15 @@ async def generate_developer_agent_stream(
     ]
 
     # Step 5: Send project_ready event with full files payload for instant Code Editor & Terminal sync
-    yield f"data: {json.dumps({'type': 'project_ready', 'projectName': project_name, 'files': created_files_map, 'terminalLogs': terminal_logs, 'folderPath': folder_display})}\n\n"
+    yield f"data: {json.dumps({'type': 'project_ready', 'projectName': proj_slug, 'projectTitle': display_title, 'files': created_files_map, 'terminalLogs': terminal_logs, 'folderPath': folder_display})}\n\n"
     await asyncio.sleep(0.3)
 
     # Step 6: Stream conversational summary tokens
     summary_text = (
-        f"🚀 **Project `{project_name}` is ready!**\n\n"
+        f"🚀 **Project `{display_title}` is ready!**\n\n"
         f"I have created the project workspace and written all production files directly to disk.\n\n"
         f"**Generated Files ({len(files_dict)}):**\n"
-        + "".join([f"• `{project_name}/{fn}`\n" for fn in files_dict.keys()]) +
+        + "".join([f"• `{proj_slug}/{fn}`\n" for fn in files_dict.keys()]) +
         f"\n**Terminal Execution:**\n"
         f"```bash\n{cmd}\n```\n"
         f"You can now open the **Code Editor** to explore and edit your files, or open **Terminal** to test."

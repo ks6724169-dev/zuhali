@@ -9,8 +9,12 @@ import { useChat } from '../../context/ChatContext';
 
 export default function CodeEditor({ onClose, onOpenTerminal }) {
   const { user } = useAuth();
-  const { startNewChat } = useChat();
+  const { currentConv, startNewChat, setConversationProject } = useChat();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
+
+  // Active Project for this specific chat
+  const activeProject = currentConv?.activeProject;
+  const projectFolderName = activeProject?.folderName;
 
   // Real user files (ZERO fake demo files!)
   const [files, setFiles] = useState(() => {
@@ -30,14 +34,37 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     return {};
   });
 
+  // Scoped files: strictly show ONLY this project's folder & files in this chat's CodeEditor
+  const displayedFiles = useMemo(() => {
+    if (!projectFolderName) return files;
+    const scoped = {};
+    const prefix = `${projectFolderName}/`;
+    for (const [k, v] of Object.entries(files)) {
+      if (k.startsWith(prefix) || k === projectFolderName) {
+        scoped[k] = v;
+      }
+    }
+    return scoped;
+  }, [files, projectFolderName]);
+
   const [explorerOpen, setExplorerOpen] = useState(true);
-  const [activeFile, setActiveFile] = useState(() => Object.keys(files)[0] || null);
+  const [activeFile, setActiveFile] = useState(() => Object.keys(displayedFiles)[0] || null);
   const [fileSearch, setFileSearch] = useState('');
   const [newFilePrompt, setNewFilePrompt] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
   const [collapsedFolders, setCollapsedFolders] = useState({});
+
+  // Auto-select first file if activeFile is not in displayedFiles
+  useEffect(() => {
+    const keys = Object.keys(displayedFiles);
+    if (keys.length > 0 && (!activeFile || !displayedFiles[activeFile])) {
+      setActiveFile(keys[0]);
+    } else if (keys.length === 0 && activeFile) {
+      setActiveFile(null);
+    }
+  }, [displayedFiles, activeFile]);
 
   // Long-press folder context menu & operations
   const [folderMenu, setFolderMenu] = useState(null); // { folderName, x, y }
@@ -131,6 +158,14 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       setActiveFile(`${newFolder}/${suffix}`);
     }
 
+    if (oldName === projectFolderName && setConversationProject) {
+      setConversationProject(currentConv.id, {
+        ...activeProject,
+        folderName: newFolder,
+        name: newFolder.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      });
+    }
+
     setRenamingFolder(null);
 
     // Sync rename to backend disk
@@ -158,6 +193,10 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       setActiveFile(remaining.length > 0 ? remaining[0] : null);
     }
 
+    if (folderName === projectFolderName && setConversationProject) {
+      setConversationProject(currentConv.id, null);
+    }
+
     setDeletingFolder(null);
     setFolderMenu(null);
 
@@ -176,7 +215,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     const rootFiles = [];
     const query = fileSearch.trim().toLowerCase();
 
-    Object.keys(files).forEach((fullPath) => {
+    Object.keys(displayedFiles).forEach((fullPath) => {
       if (query && !fullPath.toLowerCase().includes(query)) return;
 
       if (fullPath.includes('/')) {
@@ -191,7 +230,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     });
 
     return { folders, rootFiles };
-  }, [files, fileSearch]);
+  }, [displayedFiles, fileSearch]);
 
   // Create new file
   const handleCreateFile = (e) => {
@@ -199,7 +238,8 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     const name = newFileName.trim();
     if (!name) return;
 
-    const finalName = name.includes('.') ? name : `${name}.js`;
+    const baseName = name.includes('.') ? name : `${name}.js`;
+    const finalName = projectFolderName ? `${projectFolderName}/${baseName}` : baseName;
     const updated = { ...files, [finalName]: '' };
     updateFiles(updated);
     setActiveFile(finalName);
@@ -216,9 +256,10 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     const reader = new FileReader();
     reader.onload = () => {
       const content = typeof reader.result === 'string' ? reader.result : '';
-      const updated = { ...files, [file.name]: content };
+      const finalName = projectFolderName ? `${projectFolderName}/${file.name}` : file.name;
+      const updated = { ...files, [finalName]: content };
       updateFiles(updated);
-      setActiveFile(file.name);
+      setActiveFile(finalName);
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -275,20 +316,20 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     }
   };
 
-  // Live Preview HTML Compiler
+  // Live Preview HTML Compiler (using project-scoped files)
   const previewHtml = useMemo(() => {
-    const htmlKey = Object.keys(files).find(
+    const htmlKey = Object.keys(displayedFiles).find(
       (k) => k.endsWith('.html') || k.endsWith('.htm')
     );
     if (!htmlKey) {
-      return `<!DOCTYPE html><html><body style="font-family:'Segoe UI',sans-serif;padding:40px;color:#64748b;text-align:center;"><h3>No HTML File Selected</h3><p>Create or select an <code>index.html</code> file to preview your web application.</p></body></html>`;
+      return `<!DOCTYPE html><html><body style="font-family:'Segoe UI',sans-serif;padding:40px;color:#64748b;text-align:center;"><h3>No HTML File in this Project</h3><p>Create or select an <code>index.html</code> file to preview your web application.</p></body></html>`;
     }
 
-    let html = files[htmlKey] || '';
+    let html = displayedFiles[htmlKey] || '';
 
     // Inject CSS
-    const cssKeys = Object.keys(files).filter((k) => k.endsWith('.css'));
-    const combinedCss = cssKeys.map((k) => files[k]).join('\n');
+    const cssKeys = Object.keys(displayedFiles).filter((k) => k.endsWith('.css'));
+    const combinedCss = cssKeys.map((k) => displayedFiles[k]).join('\n');
     if (combinedCss) {
       if (html.includes('</head>')) {
         html = html.replace('</head>', `<style>\n${combinedCss}\n</style></head>`);
@@ -298,8 +339,8 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     }
 
     // Inject JS
-    const jsKeys = Object.keys(files).filter((k) => k.endsWith('.js') && !k.endsWith('.json'));
-    const combinedJs = jsKeys.map((k) => files[k]).join('\n;\n');
+    const jsKeys = Object.keys(displayedFiles).filter((k) => k.endsWith('.js') && !k.endsWith('.json'));
+    const combinedJs = jsKeys.map((k) => displayedFiles[k]).join('\n;\n');
     if (combinedJs) {
       if (html.includes('</body>')) {
         html = html.replace('</body>', `<script>\n${combinedJs}\n</script></body>`);
@@ -309,9 +350,9 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     }
 
     return html;
-  }, [files, previewKey]);
+  }, [displayedFiles, previewKey]);
 
-  const fileList = Object.keys(files);
+  const fileList = Object.keys(displayedFiles);
   const currentContent = activeFile && files[activeFile] !== undefined ? files[activeFile] : '';
   const lines = currentContent ? currentContent.split('\n') : [''];
   const activeFileName = activeFile ? activeFile.split('/').pop() : '';
@@ -332,7 +373,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
           <strong style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
-            {showPreview ? 'Live Preview' : 'Code Workspace'}
+            {showPreview ? 'Live Preview' : (activeProject?.name || 'Code Workspace')}
           </strong>
         </div>
 

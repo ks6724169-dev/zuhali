@@ -13,6 +13,8 @@ class ChatStreamRequest(BaseModel):
     model: Optional[str] = "zuhali-pro-v1"
     system_prompt: Optional[str] = None
     developer_mode: Optional[bool] = False
+    project_name: Optional[str] = None
+    project_title: Optional[str] = None
     user_email: Optional[str] = None
 
 class MessageFeedbackRequest(BaseModel):

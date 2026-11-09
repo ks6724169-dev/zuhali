@@ -19,7 +19,12 @@ async def chat_stream(req: ChatStreamRequest):
     prompt = req.message or ""
 
     if req.developer_mode:
-        generator = generate_developer_agent_stream(prompt, req.user_email)
+        generator = generate_developer_agent_stream(
+            prompt,
+            req.user_email,
+            project_name=req.project_name,
+            project_title=req.project_title
+        )
     else:
         generator = generate_ai_stream(prompt, req.model, req.messages, req.attachment)
 

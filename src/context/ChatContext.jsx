@@ -154,6 +154,28 @@ export function ChatProvider({ children }) {
     }
   };
 
+  // Associate project with conversation
+  const setConversationProject = (convId, project) => {
+    setConversations((prev) => {
+      const exists = prev.some((c) => c.id === convId);
+      if (exists) {
+        return prev.map((c) =>
+          c.id === convId ? { ...c, activeProject: project, updatedAt: new Date().toISOString() } : c
+        );
+      } else {
+        const newConv = {
+          id: convId,
+          title: project?.name || 'New Project Chat',
+          isPinned: false,
+          isArchived: false,
+          activeProject: project,
+          updatedAt: new Date().toISOString()
+        };
+        return [newConv, ...prev];
+      }
+    });
+  };
+
   // Send message using Server-Sent Events (SSE) Streaming
   const sendMessage = async (text, attachment = null, options = {}) => {
     if (!text.trim() && !attachment) return;
@@ -161,6 +183,8 @@ export function ChatProvider({ children }) {
     const isDevMode = !!options?.developerMode;
     let targetConvId = activeConvId;
     const exists = conversations.some((c) => c.id === targetConvId);
+    const targetConvObj = conversations.find((c) => c.id === targetConvId);
+    const activeProject = options?.activeProject || targetConvObj?.activeProject;
     const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (attachment?.name || 'New chat');
 
     // If this conversation is not yet in the recent chats list, add it!
@@ -243,6 +267,8 @@ export function ChatProvider({ children }) {
           conversation_id: targetConvId,
           model: 'zuhali-pro-v1',
           developer_mode: isDevMode,
+          project_name: activeProject?.folderName || null,
+          project_title: activeProject?.name || null,
           user_email: user?.email || null
         })
       });
@@ -562,6 +588,7 @@ export function ChatProvider({ children }) {
         startNewChat,
         selectChat,
         renameChat,
+        setConversationProject,
         togglePinChat,
         toggleArchiveChat,
         deleteChat,

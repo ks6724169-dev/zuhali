@@ -566,6 +566,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .empty-state-box p{margin:0;font-size:14px;color:#64748b}
 
 /* Create Project Modal (Page 5) */
+.create-project-modal-overlay{position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,0.4);backdrop-filter:blur(4px);padding:16px;animation:fadeIn .15s ease-out}
 .create-project-modal{width:min(100%,460px);padding:28px 24px;border:1px solid #e2e8f0;border-radius:22px;background:#fff;box-shadow:0 25px 75px rgba(0,0,0,.20)}
 .create-project-modal h2{margin:0 0 20px;font-size:20px;font-weight:700;letter-spacing:-.4px;color:#1e293b}
 .project-input-group{display:flex;flex-direction:column;gap:7px;margin-bottom:18px}
@@ -577,6 +578,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .create-project-submit-btn:disabled{background:#e2e8f0;color:#94a3b8;cursor:not-allowed;box-shadow:none}
 .create-project-cancel-btn{width:100%;height:40px;display:flex;align-items:center;justify-content:center;border:0;border-radius:12px;background:transparent;color:#64748b;font-size:13.5px;font-weight:550;cursor:pointer;margin-top:6px}
 .create-project-cancel-btn:hover{background:#f1f5f9;color:#1e293b}
+
+/* Topbar Center Project Name Pill */
+.topbar-center-project{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:20px;max-width:45%;box-shadow:0 1px 3px rgba(0,0,0,.04);cursor:default;user-select:none;z-index:5}
+.topbar-center-project .project-folder-icon{color:var(--accent-color, #16a34a);flex-shrink:0}
+.topbar-center-project .project-title-text{font-size:13.5px;font-weight:650;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dark-mode .topbar-center-project{background:#1e293b;border-color:#334155}
+.dark-mode .topbar-center-project .project-title-text{color:#f1f5f9}
 
 /* Image Preview Modal */
 .image-preview-modal{width:min(100%,580px);border:1px solid #e2e8f0;border-radius:20px;background:#fff;overflow:hidden;box-shadow:0 25px 75px rgba(0,0,0,.25)}

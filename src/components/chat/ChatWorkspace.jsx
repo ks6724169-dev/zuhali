@@ -1,17 +1,22 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   PanelLeft, SquarePen, MoreHorizontal, Copy, Pencil, Share2, Pin,
   Archive, FolderPlus, Download, Flag, Trash2, GitBranch, Volume2,
   Heart, ThumbsDown, RefreshCw, Folder, Camera, Code2, Monitor, Mic,
   ArrowUp, X, Check
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
+import { getLibraryProjects, saveLibraryProjects } from '../../services/libraryService';
 
 export default function ChatWorkspace({
   onToggleSidebar,
   onOpenEditor,
   onOpenTerminal
 }) {
+  const { user } = useAuth();
+  const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
+
   const {
     currentConv,
     currentMessages,
@@ -26,7 +31,8 @@ export default function ChatWorkspace({
     speakResponse,
     setActiveFeedbackModal,
     setActiveRenameModal,
-    getConversationText
+    getConversationText,
+    setConversationProject
   } = useChat();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -38,6 +44,11 @@ export default function ChatWorkspace({
   const [copied, setCopied] = useState(false);
   const [activeUserMenu, setActiveUserMenu] = useState(null);
 
+  // Create Project Modal States
+  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
+  const [projectNameInput, setProjectNameInput] = useState('');
+  const [projectDescInput, setProjectDescInput] = useState('');
+
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
   const inputRef = useRef(null);
@@ -45,13 +56,53 @@ export default function ChatWorkspace({
 
   const hasConversation = currentMessages.length > 0;
 
+  // Auto-activate developer mode if current conversation is attached to a project
+  useEffect(() => {
+    if (currentConv?.activeProject) {
+      setDeveloperMode(true);
+    }
+  }, [currentConv?.id, currentConv?.activeProject]);
+
   const handleSend = (e) => {
     e?.preventDefault();
     if (!draft.trim() && !attachment) return;
-    sendMessage(draft, attachment, { developerMode });
+    sendMessage(draft, attachment, {
+      developerMode,
+      activeProject: currentConv?.activeProject || null
+    });
     setDraft('');
     setAttachment(null);
     setAttachOpen(false);
+  };
+
+  const handleCreateProject = (e) => {
+    e?.preventDefault();
+    const name = projectNameInput.trim();
+    if (!name) return;
+
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 32) || 'zuhali-project';
+    const newProj = {
+      id: 'proj_' + Date.now(),
+      name: name,
+      folderName: slug,
+      description: projectDescInput.trim(),
+      createdAt: new Date().toISOString(),
+      fileCount: 0,
+      conversationId: currentConv.id
+    };
+
+    // Save to library projects
+    try {
+      const existing = getLibraryProjects(userKey);
+      saveLibraryProjects(userKey, [newProj, ...existing.filter((p) => p.folderName !== slug)]);
+    } catch (err) {}
+
+    // Attach to current conversation
+    setConversationProject(currentConv.id, newProj);
+    setDeveloperMode(true);
+    setCreateProjectModalOpen(false);
+    setProjectNameInput('');
+    setProjectDescInput('');
   };
 
   const copyConversation = async () => {
@@ -156,6 +207,22 @@ export default function ChatWorkspace({
             </button>
           )}
         </div>
+
+        {/* Center Project Name Badge */}
+        {currentConv?.activeProject && (
+          <div
+            className="topbar-center-project"
+            title={`Active Project: ${currentConv.activeProject.name}`}
+            onClick={() => {
+              setProjectNameInput(currentConv.activeProject.name || '');
+              setProjectDescInput(currentConv.activeProject.description || '');
+              setCreateProjectModalOpen(true);
+            }}
+          >
+            <Folder size={15} className="project-folder-icon" />
+            <span className="project-title-text">{currentConv.activeProject.name}</span>
+          </div>
+        )}
 
         {hasConversation && (
           <div className="header-actions">
@@ -511,8 +578,18 @@ export default function ChatWorkspace({
                   <button
                     type="button"
                     onClick={() => {
-                      setDeveloperMode((v) => !v);
                       setAttachOpen(false);
+                      if (!developerMode) {
+                        if (!currentConv?.activeProject) {
+                          setProjectNameInput('');
+                          setProjectDescInput('');
+                          setCreateProjectModalOpen(true);
+                        } else {
+                          setDeveloperMode(true);
+                        }
+                      } else {
+                        setDeveloperMode(false);
+                      }
                     }}
                   >
                     <Code2 size={18} />
@@ -542,7 +619,51 @@ export default function ChatWorkspace({
                   <Monitor size={17} />
                   <span>Terminal</span>
                 </button>
-              </>
+                {/* Create New Project Modal (Triggered on Developer Mode) */}
+      {createProjectModalOpen && (
+        <div className="create-project-modal-overlay" onClick={() => setCreateProjectModalOpen(false)}>
+          <div className="create-project-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Create New Project</h2>
+            <form onSubmit={handleCreateProject}>
+              <div className="project-input-group">
+                <label>Project Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter project name..."
+                  value={projectNameInput}
+                  onChange={(e) => setProjectNameInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="project-input-group">
+                <label>Description (Optional)</label>
+                <textarea
+                  placeholder="Enter project description..."
+                  value={projectDescInput}
+                  onChange={(e) => setProjectDescInput(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <button
+                type="submit"
+                className="create-project-submit-btn"
+                disabled={!projectNameInput.trim()}
+              >
+                Create Project
+              </button>
+              <button
+                type="button"
+                className="create-project-cancel-btn"
+                onClick={() => setCreateProjectModalOpen(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
             )}
 
             <div className="composer-spacer" />
@@ -596,6 +717,50 @@ export default function ChatWorkspace({
           }
         }}
       />
+      {/* Create New Project Modal (Triggered on Developer Mode) */}
+      {createProjectModalOpen && (
+        <div className="create-project-modal-overlay" onClick={() => setCreateProjectModalOpen(false)}>
+          <div className="create-project-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Create New Project</h2>
+            <form onSubmit={handleCreateProject}>
+              <div className="project-input-group">
+                <label>Project Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter project name..."
+                  value={projectNameInput}
+                  onChange={(e) => setProjectNameInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="project-input-group">
+                <label>Description (Optional)</label>
+                <textarea
+                  placeholder="Enter project description..."
+                  value={projectDescInput}
+                  onChange={(e) => setProjectDescInput(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <button
+                type="submit"
+                className="create-project-submit-btn"
+                disabled={!projectNameInput.trim()}
+              >
+                Create Project
+              </button>
+              <button
+                type="button"
+                className="create-project-cancel-btn"
+                onClick={() => setCreateProjectModalOpen(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
