@@ -1,75 +1,139 @@
-import React, { useState } from 'react';
-import { PanelLeft, MessageCircle, Code2, GitBranch, RefreshCw, Check } from 'lucide-react';
-
-const VIRTUAL_FILES = {
-  'App.jsx': `import React from 'react';
-import { AuthProvider } from './context/AuthContext';
-import { ChatProvider } from './context/ChatContext';
-import { ThemeProvider } from './context/ThemeContext';
-
-export default function App() {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ChatProvider>
-          {/* Zuhali AI Production Workspace */}
-        </ChatProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  );
-}`,
-  'main.jsx': `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
-import './styles.css';
-
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`,
-  'styles.css': `/* Zuhali Design System & Tokens */
-:root {
-  --accent-color: #16A34A;
-  --bg-primary: #FFFFFF;
-  --text-primary: #111827;
-}
-
-.dark-mode {
-  --bg-primary: #0F172A;
-  --text-primary: #F8FAFC;
-}`,
-  'package.json': `{
-  "name": "zuhali-ai-ui",
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build"
-  }
-}`
-};
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  PanelLeft, MessageCircle, Code2, GitBranch, Check, Plus,
+  Trash2, FilePlus, FolderOpen, Save, Play, MessageSquare,
+  FileCode, X
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
 
 export default function CodeEditor({ onClose, onOpenTerminal }) {
+  const { user } = useAuth();
+  const { sendMessage } = useChat();
+  const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
+
+  // Real user files (ZERO fake demo files!)
+  const [files, setFiles] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`zuhali_editor_files_${userKey}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Strip out any legacy demo files
+        const clean = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (!['App.jsx', 'main.jsx', 'styles.css', 'package.json'].includes(k)) {
+            clean[k] = v;
+          }
+        }
+        return clean;
+      }
+    } catch (e) {}
+    return {};
+  });
+
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('Explorer');
-  const [activeFile, setActiveFile] = useState('App.jsx');
+  const [activeFile, setActiveFile] = useState(() => Object.keys(files)[0] || null);
   const [fileSearch, setFileSearch] = useState('');
-  const [commitMsg, setCommitMsg] = useState('');
-  const [committed, setCommitted] = useState(false);
+  const [newFilePrompt, setNewFilePrompt] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving'
 
-  const fileList = Object.keys(VIRTUAL_FILES);
-  const currentContent = VIRTUAL_FILES[activeFile] || '// Select a file to view source';
-  const lines = currentContent.split('\n');
+  const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  const handleCommit = () => {
-    if (!commitMsg.trim()) return;
-    setCommitted(true);
-    setTimeout(() => {
-      setCommitMsg('');
-      setCommitted(false);
-    }, 2000);
+  // Sync files to localStorage per user
+  const updateFiles = (updated) => {
+    setFiles(updated);
+    try {
+      localStorage.setItem(`zuhali_editor_files_${userKey}`, JSON.stringify(updated));
+    } catch (e) {}
   };
+
+  // Create new file
+  const handleCreateFile = (e) => {
+    e?.preventDefault();
+    const name = newFileName.trim();
+    if (!name) return;
+    
+    // Add extension if missing
+    const finalName = name.includes('.') ? name : `${name}.js`;
+    const updated = { ...files, [finalName]: '' };
+    updateFiles(updated);
+    setActiveFile(finalName);
+    setNewFileName('');
+    setNewFilePrompt(false);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
+
+  // Delete file
+  const handleDeleteFile = (fileName, e) => {
+    e?.stopPropagation();
+    const copy = { ...files };
+    delete copy[fileName];
+    updateFiles(copy);
+    if (activeFile === fileName) {
+      const remaining = Object.keys(copy);
+      setActiveFile(remaining.length > 0 ? remaining[0] : null);
+    }
+  };
+
+  // Open file from local computer
+  const handleOpenFileFromDevice = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === 'string' ? reader.result : '';
+      const updated = { ...files, [file.name]: content };
+      updateFiles(updated);
+      setActiveFile(file.name);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Handle Code Change
+  const handleCodeChange = (e) => {
+    if (!activeFile) return;
+    const newContent = e.target.value;
+    const updated = { ...files, [activeFile]: newContent };
+    updateFiles(updated);
+    setSaveStatus('saved');
+  };
+
+  // Handle Tab key in editor for proper indentation
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const val = textarea.value;
+
+      textarea.value = val.substring(0, start) + '  ' + val.substring(end);
+      textarea.selectionStart = textarea.selectionEnd = start + 2;
+
+      if (activeFile) {
+        updateFiles({ ...files, [activeFile]: textarea.value });
+      }
+    }
+  };
+
+  // Send Active Code to AI for Review / Explanation
+  const handleSendToAI = () => {
+    if (!activeFile || !files[activeFile]) return;
+    const content = files[activeFile];
+    sendMessage(`Please analyze and review this code (${activeFile}):\n\n\`\`\`\n${content}\n\`\`\``);
+    onClose();
+  };
+
+  const fileList = Object.keys(files);
+  const currentContent = activeFile && files[activeFile] !== undefined ? files[activeFile] : '';
+  const lines = currentContent ? currentContent.split('\n') : [''];
 
   return (
     <section className="code-editor-screen">
@@ -83,7 +147,31 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
         >
           <PanelLeft size={20} />
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
+          <strong style={{ fontSize: 14, color: 'var(--text-primary, #1e293b)' }}>Code Workspace</strong>
+          {activeFile && (
+            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#f1f5f9', color: '#64748b' }}>
+              {lines.length} lines
+            </span>
+          )}
+        </div>
+
         <div className="code-header-spacer" />
+
+        {activeFile && (
+          <button
+            type="button"
+            className="code-header-icon"
+            title="Ask AI to review this code"
+            style={{ width: 'auto', padding: '0 12px', gap: 6, fontSize: 12, fontWeight: 500, color: 'var(--accent-color, #16a34a)' }}
+            onClick={handleSendToAI}
+          >
+            <MessageSquare size={16} />
+            <span>Review with AI</span>
+          </button>
+        )}
+
         <button
           className="code-header-icon"
           type="button"
@@ -116,27 +204,99 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
             {activeTab === 'Explorer' && (
               <>
-                <input
-                  className="explorer-search"
-                  value={fileSearch}
-                  onChange={(e) => setFileSearch(e.target.value)}
-                  placeholder="Search files"
-                />
-                <div className="explorer-project">ZUHALI WORKSPACE</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 6px' }}>
+                  <div className="explorer-project" style={{ padding: 0 }}>WORKSPACE FILES</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      title="New File"
+                      onClick={() => setNewFilePrompt(true)}
+                      style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--accent-color, #16a34a)', padding: 3, display: 'flex' }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Open File from Computer"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 3, display: 'flex' }}
+                    >
+                      <FolderOpen size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {newFilePrompt && (
+                  <form onSubmit={handleCreateFile} style={{ padding: '0 12px 8px' }}>
+                    <input
+                      type="text"
+                      autoFocus
+                      className="explorer-search"
+                      style={{ margin: 0, width: '100%' }}
+                      placeholder="filename.py, index.js..."
+                      value={newFileName}
+                      onChange={(e) => setNewFileName(e.target.value)}
+                      onBlur={() => { if (!newFileName.trim()) setNewFilePrompt(false); }}
+                    />
+                  </form>
+                )}
+
+                {fileList.length > 0 && (
+                  <input
+                    className="explorer-search"
+                    value={fileSearch}
+                    onChange={(e) => setFileSearch(e.target.value)}
+                    placeholder="Search files..."
+                  />
+                )}
+
                 <div className="explorer-tree">
-                  {fileList
-                    .filter((name) => name.toLowerCase().includes(fileSearch.toLowerCase()))
-                    .map((fileName) => (
+                  {fileList.length === 0 ? (
+                    <div style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                      <FileCode size={28} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.6 }} />
+                      <p style={{ margin: '0 0 10px' }}>No files in workspace</p>
                       <button
                         type="button"
-                        key={fileName}
-                        className={`explorer-file ${activeFile === fileName ? 'selected' : ''}`}
-                        onClick={() => setActiveFile(fileName)}
+                        onClick={() => setNewFilePrompt(true)}
+                        style={{
+                          background: 'color-mix(in srgb, var(--accent-color, #16a34a) 12%, transparent)',
+                          color: 'var(--accent-color, #16a34a)',
+                          border: '1px solid var(--accent-color, #16a34a)',
+                          borderRadius: 8,
+                          padding: '6px 12px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
                       >
-                        <Code2 size={14} style={{ marginRight: 6, opacity: 0.7 }} />
-                        <span>{fileName}</span>
+                        + Create File
                       </button>
-                    ))}
+                    </div>
+                  ) : (
+                    fileList
+                      .filter((name) => name.toLowerCase().includes(fileSearch.toLowerCase()))
+                      .map((fileName) => (
+                        <div
+                          key={fileName}
+                          className={`explorer-file ${activeFile === fileName ? 'selected' : ''}`}
+                          onClick={() => setActiveFile(fileName)}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 6 }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Code2 size={14} style={{ marginRight: 6, opacity: 0.7, flexShrink: 0 }} />
+                            <span>{fileName}</span>
+                          </div>
+                          <button
+                            type="button"
+                            title="Delete file"
+                            onClick={(e) => handleDeleteFile(fileName, e)}
+                            style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer', padding: 2, display: 'flex' }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))
+                  )}
                 </div>
               </>
             )}
@@ -144,63 +304,110 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
             {activeTab === 'Source Control' && (
               <div className="source-control-panel">
                 <div className="source-control-branch">
-                  <GitBranch size={14} style={{ marginRight: 6 }} /> main (synced)
+                  <GitBranch size={14} style={{ marginRight: 6 }} /> main (active)
                 </div>
-                <div className="source-control-section-title">
-                  CHANGES <span>{committed ? '0' : '2'}</span>
+                <div style={{ padding: '20px 14px', textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+                  <p style={{ margin: 0 }}>
+                    {fileList.length > 0
+                      ? `${fileList.length} user files active in workspace.`
+                      : 'Workspace is clean. No uncommitted changes.'}
+                  </p>
                 </div>
-                {!committed ? (
-                  <>
-                    <div className="source-control-change">
-                      <span> M </span><strong>App.jsx</strong><small>Modified</small>
-                    </div>
-                    <div className="source-control-change">
-                      <span> M </span><strong>styles.css</strong><small>Modified</small>
-                    </div>
-                    <textarea
-                      className="source-control-message"
-                      placeholder="Commit message (e.g. refactor: modular architecture)"
-                      rows={3}
-                      value={commitMsg}
-                      onChange={(e) => setCommitMsg(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="source-control-commit"
-                      onClick={handleCommit}
-                      disabled={!commitMsg.trim()}
-                    >
-                      Commit to main
-                    </button>
-                  </>
-                ) : (
-                  <div style={{ padding: '16px 0', color: 'var(--accent-color)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Check size={16} /> Changes committed successfully!
-                  </div>
-                )}
               </div>
             )}
           </aside>
         )}
       </div>
 
-      <div className="code-editor-tabbar">
-        <div className="code-editor-tab">
-          <Code2 size={15} />
-          <span>{activeFile}</span>
-        </div>
-      </div>
+      {/* Editor Tab Bar */}
+      {activeFile ? (
+        <>
+          <div className="code-editor-tabbar">
+            <div className="code-editor-tab" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Code2 size={15} />
+              <span>{activeFile}</span>
+              <span style={{ fontSize: 10, color: 'var(--accent-color, #16a34a)', fontWeight: 600 }}>• saved</span>
+            </div>
+          </div>
 
-      <div className="code-editor-workspace">
-        <div className="code-editor-gutter" aria-hidden="true">
-          {lines.map((_, i) => (
-            <span key={i}>{i + 1}</span>
-          ))}
+          {/* Interactive Workspace Area */}
+          <div className="code-editor-workspace" style={{ position: 'relative' }}>
+            <div className="code-editor-gutter" aria-hidden="true">
+              {lines.map((_, i) => (
+                <span key={i}>{i + 1}</span>
+              ))}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={currentContent}
+              onChange={handleCodeChange}
+              onKeyDown={handleKeyDown}
+              spellCheck="false"
+              placeholder="// Write your code here..."
+              style={{
+                flex: 1,
+                minHeight: '100%',
+                border: 0,
+                outline: 0,
+                resize: 'none',
+                background: 'transparent',
+                color: 'inherit',
+                fontFamily: 'inherit',
+                fontSize: 'inherit',
+                lineHeight: 'inherit',
+                padding: '0 28px 0 0',
+                tabSize: 2,
+                caretColor: 'var(--accent-color, #16a34a)'
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: 14 }}>
+          <Code2 size={54} style={{ opacity: 0.5, color: 'var(--accent-color, #16a34a)' }} />
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary, #334155)' }}>
+            Zuhali Code Editor
+          </h2>
+          <p style={{ margin: 0, fontSize: 13, maxWidth: 320, textAlign: 'center', color: '#64748b' }}>
+            No file open. Create a new file or open one from your computer to start coding.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              className="choose-files-btn"
+              onClick={() => {
+                setExplorerOpen(true);
+                setNewFilePrompt(true);
+              }}
+            >
+              + Create New File
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: '1px solid #cbd5e1',
+                borderRadius: 12,
+                padding: '10px 18px',
+                background: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Open File
+            </button>
+          </div>
         </div>
-        <pre className="code-editor-content">
-          <code>{currentContent}</code>
-        </pre>
-      </div>
+      )}
+
+      {/* Hidden local file picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        style={{ display: 'none' }}
+        onChange={handleOpenFileFromDevice}
+      />
     </section>
   );
 }
