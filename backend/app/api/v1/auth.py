@@ -14,6 +14,8 @@ from app.services.otp_service import (
     verify_stored_otp
 )
 from app.core.security import create_access_token, get_password_hash, verify_password
+from app.db.supabase import upsert_user_profile
+import uuid
 
 router = APIRouter(prefix="/auth", tags=["Authentication & OTP"])
 
@@ -100,6 +102,13 @@ async def verify_otp_endpoint(req: VerifyOtpRequest):
         user_name = user["name"]
     else:
         user_name = email_key.split("@")[0]
+
+    # Sync verified user to live Supabase PostgreSQL
+    try:
+        user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, email_key))
+        upsert_user_profile(user_uuid, email_key, user_name)
+    except Exception as e:
+        print("[Supabase Sync Warning]:", e)
 
     # Issue access token
     access_token = create_access_token(subject=email_key)
