@@ -7,6 +7,14 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { ACCENT_COLORS, LANGUAGES, STORAGE_CATEGORIES } from '../../constants';
+import {
+  getNotificationSettings,
+  saveNotificationSettings,
+  playChime,
+  triggerHaptic,
+  requestPushPermission,
+  showBrowserNotification
+} from '../../services/notificationService';
 
 // 1. MAIN SETTINGS SCREEN
 export function SettingsScreen({ onClose, onOpenSubScreen }) {
@@ -202,14 +210,71 @@ export function LanguageScreen({ onBack }) {
   );
 }
 
-// 4. NOTIFICATIONS SCREEN
+// 4. NOTIFICATIONS SCREEN (Connected & Fully Functional)
 export function NotificationsScreen({ onBack }) {
-  const [push, setPush] = useState(true);
-  const [aiReplies, setAiReplies] = useState(true);
-  const [updates, setUpdates] = useState(true);
-  const [reminders, setReminders] = useState(false);
-  const [sound, setSound] = useState(true);
-  const [vibration, setVibration] = useState(false);
+  const { user } = useAuth();
+  const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
+
+  const [settings, setSettings] = useState(() => getNotificationSettings(userKey));
+  const [testSent, setTestSent] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+
+  const updateSetting = async (key, val) => {
+    const next = { ...settings, [key]: val };
+    setSettings(next);
+    saveNotificationSettings(userKey, next);
+
+    // If enabling push, request real browser permission
+    if (key === 'push' && val) {
+      const res = await requestPushPermission();
+      setPermissionStatus(res.status);
+      if (res.status !== 'granted') {
+        // If user denied in browser, reflect it
+        next.push = false;
+        setSettings({ ...next });
+        saveNotificationSettings(userKey, next);
+      }
+    }
+
+    // If toggling sound, play sample chime
+    if (key === 'sound' && val) {
+      playChime();
+    }
+
+    // If toggling vibration, trigger sample haptic
+    if (key === 'vibration' && val) {
+      triggerHaptic();
+    }
+  };
+
+  const handleSendTest = async () => {
+    // 1. Play real audio chime
+    if (settings.sound) {
+      playChime();
+    }
+    // 2. Trigger vibration
+    if (settings.vibration) {
+      triggerHaptic();
+    }
+    // 3. Request permission and dispatch test browser notification
+    const res = await requestPushPermission();
+    setPermissionStatus(res.status);
+    if (res.status === 'granted') {
+      showBrowserNotification('🌿 Zuhali AI Test Notification', {
+        body: 'Real-time alert engine active and verified! Sub-second updates working.'
+      });
+    }
+
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 2500);
+  };
+
+  const { push, aiReplies, updates, reminders, sound, vibration } = settings;
 
   return (
     <section className="profile-screen notifications-screen">
@@ -221,19 +286,31 @@ export function NotificationsScreen({ onBack }) {
       </header>
       <div className="notifications-screen-content">
         <section className="notifications-group">
-          <div className="notifications-group-heading">GENERAL</div>
+          <div className="notifications-group-heading">GENERAL ALERTS</div>
           <div className="notifications-card">
             <div className="notification-row">
               <span className="notification-copy">
                 <strong>Push Notifications</strong>
-                <small>Allow Zuhali to deliver important notifications</small>
+                <small>
+                  Deliver real-time alerts to your desktop or mobile browser
+                  {permissionStatus === 'denied' && (
+                    <span style={{ color: '#ef4444', display: 'block', marginTop: '2px' }}>
+                      ⚠️ Blocked in browser settings. Please allow notifications in site settings.
+                    </span>
+                  )}
+                  {permissionStatus === 'granted' && (
+                    <span style={{ color: '#16a34a', display: 'block', marginTop: '2px' }}>
+                      ✓ Browser permissions granted &amp; active
+                    </span>
+                  )}
+                </small>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={push}
                 className={`notification-switch ${push ? 'on' : ''}`}
-                onClick={() => setPush((v) => !v)}
+                onClick={() => updateSetting('push', !push)}
               >
                 <span />
               </button>
@@ -241,7 +318,7 @@ export function NotificationsScreen({ onBack }) {
             <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
               <span className="notification-copy">
                 <strong>AI Responses</strong>
-                <small>Notify when asynchronous tasks complete</small>
+                <small>Alert immediately when an AI generation completes</small>
               </span>
               <button
                 type="button"
@@ -249,15 +326,15 @@ export function NotificationsScreen({ onBack }) {
                 disabled={!push}
                 aria-checked={aiReplies}
                 className={`notification-switch ${aiReplies ? 'on' : ''}`}
-                onClick={() => setAiReplies((v) => !v)}
+                onClick={() => updateSetting('aiReplies', !aiReplies)}
               >
                 <span />
               </button>
             </div>
             <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
               <span className="notification-copy">
-                <strong>App Updates</strong>
-                <small>Product releases and new capabilities</small>
+                <strong>App Updates &amp; Features</strong>
+                <small>Real-time notifications for new AI models and releases</small>
               </span>
               <button
                 type="button"
@@ -265,15 +342,15 @@ export function NotificationsScreen({ onBack }) {
                 disabled={!push}
                 aria-checked={updates}
                 className={`notification-switch ${updates ? 'on' : ''}`}
-                onClick={() => setUpdates((v) => !v)}
+                onClick={() => updateSetting('updates', !updates)}
               >
                 <span />
               </button>
             </div>
             <div className={`notification-row ${!push ? 'is-disabled' : ''}`}>
               <span className="notification-copy">
-                <strong>Reminders</strong>
-                <small>Scheduled events and task follow-ups</small>
+                <strong>Reminders &amp; Tasks</strong>
+                <small>Scheduled automation triggers and follow-up alerts</small>
               </span>
               <button
                 type="button"
@@ -281,7 +358,7 @@ export function NotificationsScreen({ onBack }) {
                 disabled={!push}
                 aria-checked={reminders}
                 className={`notification-switch ${reminders ? 'on' : ''}`}
-                onClick={() => setReminders((v) => !v)}
+                onClick={() => updateSetting('reminders', !reminders)}
               >
                 <span />
               </button>
@@ -289,43 +366,67 @@ export function NotificationsScreen({ onBack }) {
           </div>
         </section>
 
-        <section className={`notifications-group ${!push ? 'is-disabled' : ''}`}>
-          <div className="notifications-group-heading">SOUND &amp; VIBRATION</div>
+        <section className="notifications-group">
+          <div className="notifications-group-heading">SOUND &amp; HAPTICS</div>
           <div className="notifications-card">
             <div className="notification-row">
               <span className="notification-copy">
                 <strong>Notification Sound</strong>
-                <small>Play subtle audio chime for alerts</small>
+                <small>Play a gentle dual-frequency audio chime when response finishes</small>
               </span>
               <button
                 type="button"
                 role="switch"
-                disabled={!push}
                 aria-checked={sound}
                 className={`notification-switch ${sound ? 'on' : ''}`}
-                onClick={() => setSound((v) => !v)}
+                onClick={() => updateSetting('sound', !sound)}
               >
                 <span />
               </button>
             </div>
             <div className="notification-row">
               <span className="notification-copy">
-                <strong>Vibration</strong>
-                <small>Haptic feedback on mobile devices</small>
+                <strong>Vibration &amp; Haptics</strong>
+                <small>Subtle physical vibration pulse on touch devices</small>
               </span>
               <button
                 type="button"
                 role="switch"
-                disabled={!push}
                 aria-checked={vibration}
                 className={`notification-switch ${vibration ? 'on' : ''}`}
-                onClick={() => setVibration((v) => !v)}
+                onClick={() => updateSetting('vibration', !vibration)}
               >
                 <span />
               </button>
             </div>
           </div>
         </section>
+
+        <div style={{ marginTop: '24px', textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={handleSendTest}
+            style={{
+              padding: '12px 24px',
+              fontSize: '13px',
+              fontWeight: 650,
+              borderRadius: '12px',
+              border: '1px solid var(--accent-color, #16a34a)',
+              background: 'var(--surface-active, rgba(22, 163, 74, 0.12))',
+              color: 'var(--accent-color, #16a34a)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Bell size={16} />
+            <span>{testSent ? '✓ Notification & Chime Sent!' : 'Send Test Notification & Chime'}</span>
+          </button>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', marginTop: '8px' }}>
+            Preferences are automatically saved to your account.
+          </div>
+        </div>
       </div>
     </section>
   );

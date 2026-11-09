@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
+import { notifyAICompletion } from '../services/notificationService';
 
 const ChatContext = createContext();
 
@@ -305,6 +306,9 @@ export function ChatProvider({ children }) {
         };
       });
       setIsGenerating(false);
+      try {
+        notifyAICompletion(userKey, text);
+      } catch (err) {}
     }
   };
 
@@ -415,6 +419,9 @@ export function ChatProvider({ children }) {
           m.id === messageId ? { ...m, isStreaming: false } : m
         )
       }));
+      try {
+        notifyAICompletion(userKey, userPrompt);
+      } catch (err) {}
     }
   };
 
