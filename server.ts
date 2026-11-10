@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { spawn, ChildProcess } from 'child_process';
 
 dotenv.config();
 
@@ -39,6 +40,76 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
+
+// ------------------------------------------------------------------
+// Hybrid Microservices Configuration: Python AI Brain on Port 8000
+// ------------------------------------------------------------------
+const PYTHON_BACKEND_PORT = 8000;
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || `http://127.0.0.1:${PYTHON_BACKEND_PORT}`;
+let pythonProcess: ChildProcess | null = null;
+
+async function checkPythonBackendHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${PYTHON_BACKEND_URL}/health`, { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function ensurePythonBackendRunning() {
+  const backendDir = path.resolve(__dirname, 'backend');
+  if (!fs.existsSync(backendDir)) return;
+
+  checkPythonBackendHealth().then((isHealthy) => {
+    if (isHealthy) {
+      console.log(`[Microservice Architecture] ✅ Python AI Brain is ONLINE at ${PYTHON_BACKEND_URL}`);
+      return;
+    }
+
+    console.log(`[Microservice Architecture] Spawning Python FastAPI Brain on port ${PYTHON_BACKEND_PORT}...`);
+    try {
+      const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+      pythonProcess = spawn(pyCmd, ['-m', 'uvicorn', 'app.main:app', '--app-dir', 'backend', '--port', String(PYTHON_BACKEND_PORT), '--host', '127.0.0.1'], {
+        cwd: __dirname,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      pythonProcess.stdout?.on('data', (data) => {
+        const text = data.toString().trim();
+        if (text) console.log(`[Python Brain] ${text}`);
+      });
+
+      pythonProcess.stderr?.on('data', (data) => {
+        const text = data.toString().trim();
+        if (text && !text.includes('INFO:')) console.warn(`[Python Brain Log] ${text}`);
+      });
+
+      pythonProcess.on('exit', (code) => {
+        console.log(`[Python Brain] Process terminated (code: ${code})`);
+        pythonProcess = null;
+      });
+    } catch (e: any) {
+      console.warn('[Microservice] Could not launch Python process automatically:', e.message);
+    }
+  });
+}
+
+// Auto-check and spawn on boot
+setTimeout(ensurePythonBackendRunning, 1000);
+
+process.on('SIGINT', () => {
+  if (pythonProcess) {
+    try { pythonProcess.kill(); } catch (e) {}
+  }
+  process.exit();
+});
+
+process.on('exit', () => {
+  if (pythonProcess) {
+    try { pythonProcess.kill(); } catch (e) {}
+  }
+});
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -299,9 +370,12 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
   const {
     message = '',
     messages = [],
+    model = '',
     attachment = null,
     developer_mode = false,
-    project_title = null
+    project_title = null,
+    project_name = null,
+    user_email = null
   } = req.body;
 
   const userPrompt = message.trim() || (attachment ? `Analysis of file: ${attachment.name}` : 'Hello');
@@ -388,6 +462,54 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
   };
 
   try {
+    // ------------------------------------------------------------------
+    // 0. Primary: Delegate to Python FastAPI AI Engine (The Brain)
+    // ------------------------------------------------------------------
+    const isPyAlive = await checkPythonBackendHealth();
+    if (isPyAlive) {
+      try {
+        console.log('[Node Gateway -> Python Brain] Forwarding streaming request to Python AI Engine...');
+        const pyRes = await fetch(`${PYTHON_BACKEND_URL}/api/v1/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userPrompt,
+            model: model || 'openai/gpt-oss-120b',
+            messages: messages || [],
+            developer_mode: !!developer_mode,
+            project_name: project_name || '',
+            project_title: project_title || '',
+            user_email: user_email || '',
+            attachment: attachment || null
+          }),
+          signal: AbortSignal.timeout(60000)
+        });
+
+        if (pyRes.ok && pyRes.body) {
+          const reader = pyRes.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let pyStreamedAny = false;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            if (chunk) {
+              res.write(chunk);
+              pyStreamedAny = true;
+            }
+          }
+
+          if (pyStreamedAny) {
+            res.end();
+            return;
+          }
+        }
+      } catch (pyErr: any) {
+        console.warn('[Node Gateway] Python AI stream fallback triggered:', pyErr.message);
+      }
+    }
+
     if (developer_mode) {
       // Stream dev steps first
       const steps = [
@@ -580,18 +702,63 @@ app.get('/api/v1/chat/feedback', (req: Request, res: Response) => {
   });
 });
 
-app.delete('/api/v1/chat/project', (req: Request, res: Response) => {
-  const { project_name } = req.query;
+app.delete('/api/v1/chat/project', async (req: Request, res: Response) => {
+  const { project_name, user_email } = req.query;
+  const isPyUp = await checkPythonBackendHealth();
+  if (isPyUp) {
+    try {
+      const q = new URLSearchParams({
+        project_name: String(project_name || ''),
+        user_email: String(user_email || '')
+      });
+      const pyRes = await fetch(`${PYTHON_BACKEND_URL}/api/v1/chat/project?${q.toString()}`, {
+        method: 'DELETE'
+      });
+      if (pyRes.ok) {
+        const data = await pyRes.json();
+        return res.json(data);
+      }
+    } catch (e) {}
+  }
   return res.json({ status: 'success', message: `Project '${project_name}' deleted` });
 });
 
-app.patch('/api/v1/chat/project/rename', (req: Request, res: Response) => {
-  const { old_name, new_name } = req.body;
+app.patch('/api/v1/chat/project/rename', async (req: Request, res: Response) => {
+  const { old_name, new_name, user_email } = req.body;
+  const isPyUp = await checkPythonBackendHealth();
+  if (isPyUp) {
+    try {
+      const pyRes = await fetch(`${PYTHON_BACKEND_URL}/api/v1/chat/project/rename`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ old_name, new_name, user_email })
+      });
+      if (pyRes.ok) {
+        const data = await pyRes.json();
+        return res.json(data);
+      }
+    } catch (e) {}
+  }
   return res.json({ status: 'success', message: `Project renamed to '${new_name}'` });
 });
 
-app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'healthy', service: 'Zuhali AI Node Backend', version: '1.0.0' });
+app.get('/health', async (req: Request, res: Response) => {
+  const pyOk = await checkPythonBackendHealth();
+  res.json({
+    status: 'healthy',
+    architecture: 'Hybrid Microservices (Node.js Gateway + Python AI Brain)',
+    version: '1.0.0',
+    gateway: {
+      service: 'Node.js Express / Vite Gateway',
+      port: PORT,
+      status: 'active'
+    },
+    brain: {
+      service: 'Python FastAPI AI Engine',
+      port: PYTHON_BACKEND_PORT,
+      status: pyOk ? 'online' : 'offline (Node fallback active)'
+    }
+  });
 });
 
 // ------------------------------------------------------------------
