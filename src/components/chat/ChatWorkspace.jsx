@@ -3,11 +3,12 @@ import {
   PanelLeft, SquarePen, MoreHorizontal, Copy, Pencil, Share2, Pin,
   Archive, FolderPlus, Download, Flag, Trash2, GitBranch, Volume2,
   Heart, ThumbsDown, RefreshCw, Folder, Camera, Code2, Monitor, Mic,
-  ArrowUp, X, Check
+  ArrowUp, X, Check, Square
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { getLibraryProjects, saveLibraryProjects } from '../../services/libraryService';
+import FormattedMessage from './FormattedMessage';
 
 export default function ChatWorkspace({
   onToggleSidebar,
@@ -21,6 +22,7 @@ export default function ChatWorkspace({
     currentConv,
     currentMessages,
     isGenerating,
+    speakingMessageId,
     startNewChat,
     togglePinChat,
     toggleArchiveChat,
@@ -29,6 +31,7 @@ export default function ChatWorkspace({
     branchFrom,
     regenerate,
     speakResponse,
+    toggleSpeakResponse,
     setActiveFeedbackModal,
     setActiveRenameModal,
     getConversationText,
@@ -42,6 +45,7 @@ export default function ChatWorkspace({
   const [developerMode, setDeveloperMode] = useState(false);
   const [developerPanel, setDeveloperPanel] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState(null);
   const [activeUserMenu, setActiveUserMenu] = useState(null);
 
   // Create Project Modal States
@@ -53,8 +57,38 @@ export default function ChatWorkspace({
   const cameraRef = useRef(null);
   const inputRef = useRef(null);
   const longPressTimer = useRef(null);
+  const conversationRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
   const hasConversation = currentMessages.length > 0;
+
+  const scrollToBottom = (behavior = 'smooth') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
+    } else if (conversationRef.current) {
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+    }
+  };
+
+  // Auto scroll to last line of chat when opening or selecting recent chat
+  useEffect(() => {
+    if (hasConversation) {
+      scrollToBottom('instant');
+      const t1 = setTimeout(() => scrollToBottom('instant'), 50);
+      const t2 = setTimeout(() => scrollToBottom('smooth'), 180);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [currentConv?.id]);
+
+  // Auto scroll when new messages arrive or during AI streaming
+  useEffect(() => {
+    if (hasConversation) {
+      scrollToBottom('smooth');
+    }
+  }, [currentMessages.length, isGenerating]);
 
   // Auto-activate developer mode if current conversation is attached to a project
   useEffect(() => {
@@ -62,6 +96,30 @@ export default function ChatWorkspace({
       setDeveloperMode(true);
     }
   }, [currentConv?.id, currentConv?.activeProject]);
+
+  // Close popups when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (menuOpen && !e.target.closest('.topbar .menu-anchor')) {
+        setMenuOpen(false);
+      }
+      if (attachOpen && !e.target.closest('.composer-tools .menu-anchor')) {
+        setAttachOpen(false);
+      }
+      if (activeUserMenu !== null && !e.target.closest('.user-message-menu')) {
+        setActiveUserMenu(null);
+      }
+    };
+
+    if (menuOpen || attachOpen || activeUserMenu !== null) {
+      document.addEventListener('pointerdown', handleOutsideClick);
+      document.addEventListener('click', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [menuOpen, attachOpen, activeUserMenu]);
 
   const handleSend = (e) => {
     e?.preventDefault();
@@ -138,9 +196,13 @@ export default function ChatWorkspace({
     setMenuOpen(false);
   };
 
-  const copySingleResponse = async (text) => {
+  const copySingleResponse = async (msgId, text) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedMsgId(msgId);
+      setTimeout(() => {
+        setCopiedMsgId((prev) => (prev === msgId ? null : prev));
+      }, 2000);
     } catch {}
     setActiveUserMenu(null);
   };
@@ -285,7 +347,7 @@ export default function ChatWorkspace({
       </header>
 
       {/* CONVERSATION AREA */}
-      <section className={`conversation ${hasConversation ? 'has-messages' : 'empty-state'}`}>
+      <section ref={conversationRef} className={`conversation ${hasConversation ? 'has-messages' : 'empty-state'}`}>
         {!hasConversation ? (
           <div className="welcome">
             <h1>How can I help you?</h1>
@@ -300,10 +362,7 @@ export default function ChatWorkspace({
               >
                 {message.assistant ? (
                   <>
-                    <div className="assistant-label">
-                      <span className="assistant-mark">z</span>
-                      <strong>Zuhali</strong>
-                    </div>
+
 
                     {message.devSteps && message.devSteps.length > 0 && (
                       <div className="dev-agent-card">
@@ -363,16 +422,21 @@ export default function ChatWorkspace({
                       </div>
                     )}
 
-                    <p style={{ whiteSpace: 'pre-line' }}>{message.text}</p>
+                    <FormattedMessage text={message.text} onSelectChoice={(val) => sendMessage(val)} />
                     {message.isStreaming && <span className="streaming-cursor">▋</span>}
                     {!message.isStreaming && message.text && (
                       <div className="response-tools" aria-label="Response actions">
                         <button
-                          title="Copy response"
-                          aria-label="Copy response"
-                          onClick={() => copySingleResponse(message.text)}
+                          className={copiedMsgId === message.id ? 'is-copied' : ''}
+                          title={copiedMsgId === message.id ? 'Copied to clipboard!' : 'Copy response'}
+                          aria-label={copiedMsgId === message.id ? 'Copied to clipboard!' : 'Copy response'}
+                          onClick={() => copySingleResponse(message.id, message.text)}
                         >
-                          <Copy size={16} />
+                          {copiedMsgId === message.id ? (
+                            <Check size={16} className="copied-check-icon" style={{ color: '#10b981' }} />
+                          ) : (
+                            <Copy size={16} />
+                          )}
                         </button>
                         <button
                           title="Share entire chat"
@@ -389,11 +453,16 @@ export default function ChatWorkspace({
                           <GitBranch size={16} />
                         </button>
                         <button
-                          title="Read aloud"
-                          aria-label="Read aloud"
-                          onClick={() => speakResponse(message.text)}
+                          className={speakingMessageId === message.id ? 'is-speaking' : ''}
+                          title={speakingMessageId === message.id ? 'Pause / Stop reading' : 'Read aloud'}
+                          aria-label={speakingMessageId === message.id ? 'Pause / Stop reading' : 'Read aloud'}
+                          onClick={() => toggleSpeakResponse(message.id, message.text)}
                         >
-                          <Volume2 size={16} />
+                          {speakingMessageId === message.id ? (
+                            <Square size={14} fill="currentColor" className="speaking-square-icon" style={{ color: '#ef4444' }} />
+                          ) : (
+                            <Volume2 size={16} />
+                          )}
                         </button>
                         <button
                           className={message.feedback === 'like' ? 'is-active' : ''}
@@ -421,6 +490,7 @@ export default function ChatWorkspace({
                       </div>
                     )}
                   </>
+
                 ) : (
                   <div className="user-message-wrap">
                     <div
@@ -458,8 +528,16 @@ export default function ChatWorkspace({
                         <button role="menuitem" onClick={() => editUserMessage(message)}>
                           <Pencil size={15} /> Edit
                         </button>
-                        <button role="menuitem" onClick={() => copySingleResponse(message.text)}>
-                          <Copy size={15} /> Copy
+                        <button role="menuitem" onClick={() => copySingleResponse(message.id, message.text)}>
+                          {copiedMsgId === message.id ? (
+                            <>
+                              <Check size={15} style={{ color: '#10b981' }} /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={15} /> Copy
+                            </>
+                          )}
                         </button>
                       </div>
                     )}
@@ -467,6 +545,7 @@ export default function ChatWorkspace({
                 )}
               </article>
             ))}
+            <div ref={messagesEndRef} style={{ height: 1 }} />
           </div>
         )}
       </section>
@@ -619,51 +698,7 @@ export default function ChatWorkspace({
                   <Monitor size={17} />
                   <span>Terminal</span>
                 </button>
-                {/* Create New Project Modal (Triggered on Developer Mode) */}
-      {createProjectModalOpen && (
-        <div className="create-project-modal-overlay" onClick={() => setCreateProjectModalOpen(false)}>
-          <div className="create-project-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Create New Project</h2>
-            <form onSubmit={handleCreateProject}>
-              <div className="project-input-group">
-                <label>Project Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter project name..."
-                  value={projectNameInput}
-                  onChange={(e) => setProjectNameInput(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div className="project-input-group">
-                <label>Description (Optional)</label>
-                <textarea
-                  placeholder="Enter project description..."
-                  value={projectDescInput}
-                  onChange={(e) => setProjectDescInput(e.target.value)}
-                  rows={3}
-                />
-              </div>
-              <button
-                type="submit"
-                className="create-project-submit-btn"
-                disabled={!projectNameInput.trim()}
-              >
-                Create Project
-              </button>
-              <button
-                type="button"
-                className="create-project-cancel-btn"
-                onClick={() => setCreateProjectModalOpen(false)}
-              >
-                Cancel
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
+              </>
             )}
 
             <div className="composer-spacer" />
@@ -688,7 +723,6 @@ export default function ChatWorkspace({
           </div>
         </form>
 
-        <p className="disclaimer">Zuhali can make mistakes. Verify important information.</p>
       </div>
 
       <input

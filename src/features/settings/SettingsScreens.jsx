@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Palette, Settings, Bell, ShieldCheck, Database, Info,
   Volume2, MessageSquare, Folder, Monitor, Camera, Sun, Moon, Smartphone,
-  Check, UserRound, Pencil, CreditCard, CircleHelp, Shield, FileText, CheckCircle2
+  Check, UserRound, Pencil, CreditCard, CircleHelp, Shield, FileText, CheckCircle2,
+  ChevronDown, ChevronUp, Paintbrush, SunMedium
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -30,42 +31,59 @@ export function SettingsScreen({ onClose, onOpenSubScreen }) {
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('appearance')}>
           <span className="settings-option-icon"><Palette size={19} /></span>
           <span><strong>Appearance</strong><small>Light, Dark or System Default &amp; Colors</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
         </button>
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('language')}>
           <span className="settings-option-icon"><Settings size={19} /></span>
-          <span><strong>Language</strong><small>App language preferences</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
+          <span><strong>General</strong><small>App language &amp; preferences</small></span>
         </button>
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('notifications')}>
           <span className="settings-option-icon"><Bell size={19} /></span>
           <span><strong>Notifications</strong><small>Notification &amp; sound preferences</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
         </button>
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('privacy')}>
           <span className="settings-option-icon"><ShieldCheck size={19} /></span>
           <span><strong>Privacy &amp; Data</strong><small>Chat history and security settings</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
         </button>
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('storage')}>
           <span className="settings-option-icon"><Database size={19} /></span>
           <span><strong>Storage</strong><small>Storage allocation &amp; cleanup</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
         </button>
         <button type="button" className="settings-option" onClick={() => onOpenSubScreen('about')}>
           <span className="settings-option-icon"><Info size={19} /></span>
           <span><strong>About Zuhali</strong><small>Version 1.0.0 (Production Architecture)</small></span>
-          <ArrowLeft className="settings-option-chevron" size={17} />
         </button>
       </div>
     </section>
   );
 }
 
-// 2. APPEARANCE SCREEN
+// 2. APPEARANCE SCREEN (ChatGPT Modern Popup Card Design)
 export function AppearanceScreen({ onBack }) {
   const { theme, setTheme, accentColor, setAccentColor, currentAccent } = useTheme();
+  const [themeOpen, setThemeOpen] = useState(false);
   const [accentOpen, setAccentOpen] = useState(false);
+  const themeRef = useRef(null);
+  const accentRef = useRef(null);
+
+  const activeThemeName = theme === 'System Default' ? 'System' : (theme || 'System');
+
+  // Close popup dropdowns on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (themeRef.current && !themeRef.current.contains(e.target)) {
+        setThemeOpen(false);
+      }
+      if (accentRef.current && !accentRef.current.contains(e.target)) {
+        setAccentOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   return (
     <section className="profile-screen appearance-screen">
@@ -75,118 +93,119 @@ export function AppearanceScreen({ onBack }) {
         </button>
         <h1>Appearance</h1>
       </header>
-      <div className="appearance-content">
-        <div className="appearance-section-label">THEME</div>
-        <div className="appearance-theme-list">
-          {[
-            { name: 'Light', description: 'Clean and bright appearance', Icon: Sun, preview: 'light' },
-            { name: 'Dark', description: 'Comfortable in low light', Icon: Moon, preview: 'dark' },
-            { name: 'System Default', description: 'Match your device settings', Icon: Smartphone, preview: 'system' }
-          ].map(({ name, description, Icon, preview }) => (
-            <button
-              type="button"
-              key={name}
-              className={`appearance-theme-option ${theme === name ? 'selected' : ''}`}
-              onClick={() => setTheme(name)}
-            >
-              <span className="appearance-theme-icon"><Icon size={20} /></span>
-              <span className="appearance-theme-copy">
-                <strong>{name}</strong>
-                <small>{description}</small>
-              </span>
-              <span className={`appearance-theme-swatch ${preview}`} aria-hidden="true">
-                <i /><i /><i />
-              </span>
-              <span className="appearance-radio" aria-hidden="true">
-                {theme === name ? <span /> : null}
-              </span>
-            </button>
-          ))}
-        </div>
 
-        <div className="appearance-section-label accent-label">ACCENT COLOR</div>
-        
-        {/* Quick 1-click Color Swatches */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-          {ACCENT_COLORS.map(({ name, value }) => (
-            <button
-              key={name}
-              type="button"
-              title={name}
-              onClick={() => setAccentColor(name)}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                background: value,
-                border: accentColor === name ? '3px solid #fff' : '2px solid transparent',
-                outline: accentColor === name ? `2px solid ${value}` : 'none',
-                cursor: 'pointer',
-                display: 'grid',
-                placeItems: 'center',
-                boxShadow: accentColor === name ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
-                transform: accentColor === name ? 'scale(1.15)' : 'scale(1)',
-                transition: 'all .15s ease'
+      <div className="appearance-content">
+        {/* ChatGPT Style Grouped Settings Card */}
+        <div className="chatgpt-settings-card">
+          {/* Row 1: Appearance Theme Dropdown */}
+          <div className="chatgpt-settings-row-wrap" ref={themeRef}>
+            <div
+              className="chatgpt-settings-row"
+              onClick={() => {
+                setThemeOpen((prev) => !prev);
+                setAccentOpen(false);
               }}
             >
-              {accentColor === name && (
-                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 'bold' }}>✓</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="accent-picker-wrap">
-          <button
-            type="button"
-            className="accent-picker-trigger"
-            aria-expanded={accentOpen}
-            onClick={() => setAccentOpen((v) => !v)}
-          >
-            <span className="accent-picker-current">
-              <i style={{ background: currentAccent.value }} />
-              {accentColor}
-            </span>
-            <span className="accent-picker-trigger-right">
-              <small>All 20 colors</small>
-              <ArrowLeft size={16} className={accentOpen ? 'accent-chevron-open' : 'accent-chevron'} />
-            </span>
-          </button>
-
-          {accentOpen && (
-            <div className="accent-color-popup" role="listbox" aria-label="Choose accent color">
-              <div className="accent-popup-heading">Choose a color</div>
-              <div className="accent-color-list">
-                {ACCENT_COLORS.map(({ name, value }) => (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={accentColor === name}
-                    key={name}
-                    className={`accent-color-option ${accentColor === name ? 'selected' : ''}`}
-                    onClick={() => {
-                      setAccentColor(name);
-                      setAccentOpen(false);
-                    }}
-                  >
-                    <i style={{ background: value }} />
-                    <span>{name}</span>
-                    {accentColor === name && <span className="accent-color-check">✓</span>}
-                  </button>
-                ))}
+              <div className="chatgpt-settings-row-left">
+                <SunMedium size={20} className="chatgpt-settings-row-icon" />
+                <span className="chatgpt-settings-row-label">Appearance</span>
+              </div>
+              <div className="chatgpt-settings-row-right">
+                <span className="chatgpt-settings-value">{activeThemeName}</span>
+                {themeOpen ? <ChevronUp size={16} className="chatgpt-chevron" /> : <ChevronDown size={16} className="chatgpt-chevron" />}
               </div>
             </div>
-          )}
+
+            {/* Popup Menu for Theme Selection */}
+            {themeOpen && (
+              <div className="chatgpt-dropdown-menu theme-menu" role="listbox">
+                {[
+                  { label: 'System', value: 'System' },
+                  { label: 'Light', value: 'Light' },
+                  { label: 'Dark', value: 'Dark' }
+                ].map((item) => {
+                  const isSelected = activeThemeName === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      className={`chatgpt-dropdown-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        setTheme(item.value);
+                        setThemeOpen(false);
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      {isSelected && <Check size={18} className="chatgpt-dropdown-check" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="chatgpt-settings-divider" />
+
+          {/* Row 2: Accent color Dropdown */}
+          <div className="chatgpt-settings-row-wrap" ref={accentRef}>
+            <div
+              className="chatgpt-settings-row"
+              onClick={() => {
+                setAccentOpen((prev) => !prev);
+                setThemeOpen(false);
+              }}
+            >
+              <div className="chatgpt-settings-row-left">
+                <Paintbrush size={20} className="chatgpt-settings-row-icon" />
+                <span className="chatgpt-settings-row-label">Accent color</span>
+              </div>
+              <div className="chatgpt-settings-row-right">
+                <span
+                  className="chatgpt-settings-color-dot"
+                  style={{ background: currentAccent.value }}
+                />
+                <span className="chatgpt-settings-value">{accentColor}</span>
+                {accentOpen ? <ChevronUp size={16} className="chatgpt-chevron" /> : <ChevronDown size={16} className="chatgpt-chevron" />}
+              </div>
+            </div>
+
+            {/* Popup Menu for Accent Colors */}
+            {accentOpen && (
+              <div className="chatgpt-dropdown-menu accent-menu" role="listbox">
+                {ACCENT_COLORS.map(({ name, value }) => {
+                  const isSelected = accentColor.toLowerCase() === name.toLowerCase();
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`chatgpt-dropdown-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        setAccentColor(name);
+                        setAccentOpen(false);
+                      }}
+                    >
+                      <div className="chatgpt-accent-item-left">
+                        <span className="chatgpt-settings-color-dot" style={{ background: value }} />
+                        <span>{name}</span>
+                      </div>
+                      {isSelected && <Check size={18} className="chatgpt-dropdown-check" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="appearance-section-label preview-label">PREVIEW</div>
-        <div className={`appearance-chat-preview ${theme === 'Dark' ? 'preview-dark' : ''}`}>
+        {/* Live Preview section */}
+        <div className="appearance-section-label preview-label" style={{ marginTop: '28px' }}>LIVE PREVIEW</div>
+        <div className={`appearance-chat-preview ${activeThemeName === 'Dark' ? 'preview-dark' : ''}`}>
           <div className="appearance-preview-header">
-            <span className="appearance-preview-logo" style={{ background: 'var(--accent-color, #16a34a)' }}><span /></span>
+            <span className="appearance-preview-logo" style={{ background: 'var(--accent-color, #2563eb)' }}><span /></span>
             <span><strong>Zuhali</strong><small>AI Assistant</small></span>
           </div>
           <div className="appearance-preview-message">Hello! How can I help you today?</div>
-          <div className="appearance-preview-user" style={{ background: 'var(--accent-color, #16a34a)', color: '#fff' }}>Explain Artificial Intelligence.</div>
+          <div className="appearance-preview-user" style={{ background: 'var(--accent-color, #2563eb)', color: '#fff' }}>Explain Artificial Intelligence.</div>
           <small className="appearance-preview-note">Live Preview of your active theme &amp; accent color</small>
         </div>
       </div>
@@ -194,48 +213,137 @@ export function AppearanceScreen({ onBack }) {
   );
 }
 
-// 3. LANGUAGE SCREEN
+// ChatGPT Style App Language List matching uploaded screenshot
+const CHATGPT_LANGUAGES = [
+  { id: 'system', name: 'System default' },
+  { id: 'am', name: 'አማርኛ' },
+  { id: 'ar', name: 'العربية' },
+  { id: 'bg', name: 'български' },
+  { id: 'bn', name: 'বাংলা' },
+  { id: 'bs', name: 'bosanski' },
+  { id: 'ca', name: 'català' },
+  { id: 'cs', name: 'čeština' },
+  { id: 'da', name: 'dansk' },
+  { id: 'de', name: 'Deutsch' },
+  { id: 'el', name: 'Ελληνικά' },
+  { id: 'en', name: 'English' },
+  { id: 'es', name: 'Español' },
+  { id: 'fr', name: 'Français' },
+  { id: 'hi', name: 'हिन्दी' },
+  { id: 'id', name: 'Bahasa Indonesia' },
+  { id: 'it', name: 'Italiano' },
+  { id: 'ja', name: '日本語' },
+  { id: 'ko', name: '한국어' },
+  { id: 'mr', name: 'मराठी' },
+  { id: 'nl', name: 'Nederlands' },
+  { id: 'pl', name: 'Polski' },
+  { id: 'pt', name: 'Português' },
+  { id: 'ro', name: 'Română' },
+  { id: 'ru', name: 'Русский' },
+  { id: 'ta', name: 'தமிழ்' },
+  { id: 'te', name: 'తెలుగు' },
+  { id: 'tr', name: 'Türkçe' },
+  { id: 'uk', name: 'Українська' },
+  { id: 'ur', name: 'اردو' },
+  { id: 'zh', name: '中文' },
+  { id: 'gu', name: 'ગુજરાતી' },
+  { id: 'kn', name: 'ಕನ್ನಡ' },
+  { id: 'ml', name: 'മലയാളം' },
+  { id: 'pa', name: 'ਪੰਜਾਬੀ' },
+  { id: 'sa', name: 'संस्कृतम्' }
+];
+
+// 3. GENERAL SCREEN (ChatGPT App Language Popup Card)
 export function LanguageScreen({ onBack }) {
   const [selectedLang, setSelectedLang] = useState(() => localStorage.getItem('zuhali_lang') || 'English');
+  const [langOpen, setLangOpen] = useState(false);
+  const langRef = useRef(null);
 
-  const handleSelect = (langName) => {
+  // Close popup dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (langRef.current && !langRef.current.contains(e.target)) {
+        setLangOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  const handleSelectLanguage = (langName) => {
     setSelectedLang(langName);
     localStorage.setItem('zuhali_lang', langName);
+    setLangOpen(false);
   };
 
   return (
     <section className="profile-screen language-screen">
-      <header className="profile-screen-header">
+      <header className="profile-screen-header general-screen-header">
         <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
           <ArrowLeft size={20} />
         </button>
-        <h1>Language</h1>
+        <h1 className="general-header-title">General</h1>
       </header>
-      <div className="language-screen-content">
-        <div className="language-intro">
-          <strong>App Language</strong>
-          <small>Choose your preferred interface language.</small>
-        </div>
-        <div className="language-list">
-          {LANGUAGES.map(({ name, native }) => (
-            <button
-              type="button"
-              key={name}
-              className={`language-option ${selectedLang === name ? 'selected' : ''}`}
-              onClick={() => handleSelect(name)}
+
+      <div className="chatgpt-general-content">
+        {/* App language Section with ChatGPT Floating Dropdown Popup */}
+        <div className="chatgpt-general-section">
+          <div className="chatgpt-general-card chatgpt-lang-card-wrap" ref={langRef}>
+            <div
+              className="chatgpt-general-row clickable"
+              onClick={() => setLangOpen((prev) => !prev)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setLangOpen((prev) => !prev);
+                }
+              }}
             >
-              <span className="language-option-letter">🌐</span>
-              <span className="language-option-copy">
-                <strong>{native}</strong>
-                <small>{name}</small>
-              </span>
-              <span className="language-radio" aria-hidden="true">
-                {selectedLang === name ? <i /> : null}
-              </span>
-            </button>
-          ))}
+              <span className="chatgpt-general-row-title">App language</span>
+              <div className="chatgpt-general-row-value-wrap">
+                <span className="chatgpt-general-row-value">{selectedLang}</span>
+                {langOpen ? (
+                  <ChevronUp size={16} className="chatgpt-chevron" />
+                ) : (
+                  <ChevronDown size={16} className="chatgpt-chevron" />
+                )}
+              </div>
+            </div>
+
+            {/* Floating Language Popup exactly like Screenshot */}
+            {langOpen && (
+              <div className="chatgpt-language-popup" role="listbox">
+                <div className="chatgpt-language-popup-scroll">
+                  {CHATGPT_LANGUAGES.map((lang) => {
+                    const isSelected = selectedLang === lang.name;
+                    return (
+                      <button
+                        key={lang.id}
+                        type="button"
+                        className={`chatgpt-language-popup-item ${isSelected ? 'selected' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectLanguage(lang.name);
+                        }}
+                      >
+                        <span className="chatgpt-lang-name">{lang.name}</span>
+                        {isSelected && (
+                          <Check size={18} strokeWidth={2.5} className="chatgpt-dropdown-check" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <p className="language-footnote">Language preference is saved and applied immediately.</p>
       </div>
     </section>
   );

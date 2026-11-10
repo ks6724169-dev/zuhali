@@ -39,7 +39,25 @@ function MainAppShell() {
       {authView !== 'app' ? (
         <AuthScreen />
       ) : terminalOpen ? (
-        <Terminal onClose={() => setTerminalOpen(false)} />
+        <Terminal
+          onClose={() => setTerminalOpen(false)}
+          onOpenEditor={(openSidebar = false) => {
+            setTerminalOpen(false);
+            setEditorOpen(true);
+            if (openSidebar) {
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('zuhali_open_sidebar'));
+              }, 20);
+            }
+          }}
+          onOpenPreview={() => {
+            setTerminalOpen(false);
+            setEditorOpen(true);
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('zuhali_open_preview'));
+            }, 20);
+          }}
+        />
       ) : editorOpen ? (
         <CodeEditor
           onClose={() => setEditorOpen(false)}

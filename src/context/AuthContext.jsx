@@ -163,6 +163,20 @@ export function AuthProvider({ children }) {
     });
   };
 
+  const quickTestLogin = () => {
+    const profile = {
+      id: 'usr_guest_' + Date.now(),
+      name: 'Guest Tester',
+      email: 'guest@zuhali.ai',
+      avatar: '',
+      createdAt: new Date().toISOString()
+    };
+    setUser(profile);
+    localStorage.setItem('zuhali_user', JSON.stringify(profile));
+    localStorage.setItem('zuhali_token', 'guest_test_token');
+    setAuthView('app');
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('zuhali_user');
@@ -187,6 +201,7 @@ export function AuthProvider({ children }) {
         verifyOtp,
         resetPassword,
         updateProfile,
+        quickTestLogin,
         logout,
         isAuthenticated: !!user && authView === 'app'
       }}

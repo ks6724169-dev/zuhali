@@ -1,0 +1,6 @@
+{
+  "name": "Zuhali — AI Workspace",
+  "description": "Zuhali — a thoughtful AI workspace featuring full chat, developer mode agent, auth, library, and settings.",
+  "request_frame_permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

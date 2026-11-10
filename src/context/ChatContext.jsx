@@ -24,13 +24,6 @@ export function ChatProvider({ children }) {
   });
 
   const [activeConvId, setActiveConvId] = useState(() => {
-    const saved = localStorage.getItem(`zuhali_conversations_${userKey}`);
-    if (saved) {
-      try {
-        const list = JSON.parse(saved);
-        if (list.length > 0) return list[0].id;
-      } catch (e) {}
-    }
     return 'conv_' + Date.now();
   });
 
@@ -67,12 +60,7 @@ export function ChatProvider({ children }) {
 
       setConversations(loadedConvs);
       setMessagesMap(loadedMsgs);
-
-      if (loadedConvs.length > 0) {
-        setActiveConvId(loadedConvs[0].id);
-      } else {
-        setActiveConvId('conv_' + Date.now());
-      }
+      setActiveConvId('conv_' + Date.now());
     }
   }, [userKey]);
 
@@ -254,7 +242,7 @@ export function ChatProvider({ children }) {
 
     try {
       const token = localStorage.getItem('zuhali_token');
-      const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
+      const response = await fetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -448,7 +436,7 @@ export function ChatProvider({ children }) {
 
     try {
       const token = localStorage.getItem('zuhali_token');
-      const response = await fetch('http://localhost:8000/api/v1/chat/stream', {
+      const response = await fetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -535,7 +523,7 @@ export function ChatProvider({ children }) {
 
     try {
       const token = localStorage.getItem('zuhali_token');
-      await fetch('http://localhost:8000/api/v1/chat/feedback', {
+      await fetch('/api/v1/chat/feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -556,7 +544,54 @@ export function ChatProvider({ children }) {
     }
   };
 
-  // Speech
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
+
+  // Stop active speech
+  const stopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingMessageId(null);
+  };
+
+  // Toggle speak / pause response
+  const toggleSpeakResponse = (messageId, text) => {
+    if (!('speechSynthesis' in window)) return;
+
+    // If currently speaking this message, pause/stop speaking
+    if (speakingMessageId === messageId) {
+      stopSpeaking();
+      return;
+    }
+
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    if (!text) {
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    // Strip code blocks or markup for cleaner TTS audio
+    const cleanText = text.replace(/```[\s\S]*?```/g, 'Code block.').trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText || text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => {
+      setSpeakingMessageId(null);
+    };
+
+    utterance.onerror = () => {
+      setSpeakingMessageId(null);
+    };
+
+    setSpeakingMessageId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Legacy speak handler for compatibility
   const speakResponse = (text) => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
@@ -565,6 +600,11 @@ export function ChatProvider({ children }) {
     utterance.pitch = 1.0;
     window.speechSynthesis.speak(utterance);
   };
+
+  // Stop speech if active conversation changes
+  useEffect(() => {
+    stopSpeaking();
+  }, [activeConvId]);
 
   // Conversation text for copy/share/export
   const getConversationText = () => {
@@ -581,6 +621,7 @@ export function ChatProvider({ children }) {
         currentConv,
         currentMessages,
         isGenerating,
+        speakingMessageId,
         activeFeedbackModal,
         setActiveFeedbackModal,
         activeRenameModal,
@@ -597,6 +638,8 @@ export function ChatProvider({ children }) {
         regenerate,
         submitFeedback,
         speakResponse,
+        toggleSpeakResponse,
+        stopSpeaking,
         getConversationText
       }}
     >
@@ -606,3 +649,4 @@ export function ChatProvider({ children }) {
 }
 
 export const useChat = () => useContext(ChatContext);
+

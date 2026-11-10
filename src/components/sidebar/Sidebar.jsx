@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   SquarePen, Search, MessageSquare, UserRound, Settings,
-  CreditCard, CircleHelp, LogOut, MoreHorizontal, Pin, FolderKanban
+  CreditCard, CircleHelp, LogOut, MoreHorizontal, Pin, FolderKanban,
+  Pencil, Trash2
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,14 +16,45 @@ export default function Sidebar({
   onOpenHelp,
   onOpenLibrary
 }) {
-  const { conversations, activeConvId, selectChat, startNewChat } = useChat();
+  const {
+    conversations,
+    activeConvId,
+    selectChat,
+    startNewChat,
+    setActiveRenameModal,
+    togglePinChat,
+    deleteChat
+  } = useChat();
   const { user, logout } = useAuth();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [longPressConvId, setLongPressConvId] = useState(null);
 
   const sidebarTouchStart = useRef(null);
+  const longPressTimer = useRef(null);
+
+  // Close popup menu on click outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (longPressConvId && !e.target.closest('.sidebar-chat-menu')) {
+        setLongPressConvId(null);
+      }
+      if (profileMenuOpen && !e.target.closest('.chat-sidebar-profile-wrap')) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    if (longPressConvId || profileMenuOpen) {
+      document.addEventListener('pointerdown', handleOutsideClick);
+      document.addEventListener('click', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [longPressConvId, profileMenuOpen]);
 
   if (!isOpen) return null;
 
@@ -108,21 +140,83 @@ export default function Sidebar({
               </div>
             ) : (
               filteredChats.map((conv) => (
-                <button
-                  type="button"
-                  key={conv.id}
-                  className={conv.id === activeConvId ? 'is-active-chat' : ''}
-                  onClick={() => {
-                    selectChat(conv.id);
-                    onClose();
-                  }}
-                >
-                  <MessageSquare size={15} />
-                  <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {conv.title}
-                  </span>
-                  {conv.isPinned && <Pin size={13} style={{ opacity: 0.7 }} />}
-                </button>
+                <div key={conv.id} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className={conv.id === activeConvId ? 'is-active-chat' : ''}
+                    onClick={() => {
+                      if (longPressConvId) {
+                        setLongPressConvId(null);
+                        return;
+                      }
+                      selectChat(conv.id);
+                      onClose();
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setLongPressConvId(conv.id);
+                    }}
+                    onTouchStart={() => {
+                      longPressTimer.current = setTimeout(() => setLongPressConvId(conv.id), 450);
+                    }}
+                    onTouchEnd={() => clearTimeout(longPressTimer.current)}
+                    onTouchMove={() => clearTimeout(longPressTimer.current)}
+                    onMouseDown={() => {
+                      longPressTimer.current = setTimeout(() => setLongPressConvId(conv.id), 450);
+                    }}
+                    onMouseUp={() => clearTimeout(longPressTimer.current)}
+                    onMouseLeave={() => clearTimeout(longPressTimer.current)}
+                  >
+                    <MessageSquare size={15} />
+                    <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {conv.title}
+                    </span>
+                    {conv.isPinned && <Pin size={13} style={{ opacity: 0.7 }} />}
+                  </button>
+
+                  {longPressConvId === conv.id && (
+                    <div
+                      className="sidebar-chat-menu"
+                      onClick={(e) => e.stopPropagation()}
+                      role="menu"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setLongPressConvId(null);
+                          setActiveRenameModal({ convId: conv.id, currentTitle: conv.title });
+                        }}
+                      >
+                        <Pencil size={15} />
+                        <span>Rename</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          togglePinChat(conv.id);
+                          setLongPressConvId(null);
+                        }}
+                      >
+                        <Pin size={15} />
+                        <span>{conv.isPinned ? 'Unpin' : 'Pin'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="danger-item"
+                        onClick={() => {
+                          deleteChat(conv.id);
+                          setLongPressConvId(null);
+                        }}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))
             )}
           </div>

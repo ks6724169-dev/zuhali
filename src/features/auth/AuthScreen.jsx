@@ -19,7 +19,8 @@ export default function AuthScreen() {
     verifyOtp,
     resetPassword,
     user,
-    updateProfile
+    updateProfile,
+    quickTestLogin
   } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -159,6 +160,31 @@ export default function AuthScreen() {
 
               <button className="auth-primary" type="submit" disabled={authLoading}>
                 {authLoading ? 'Signing in...' : 'Log In'} <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
+              </button>
+
+              <button
+                className="auth-quick-test"
+                type="button"
+                onClick={quickTestLogin}
+                style={{
+                  width: '100%',
+                  marginTop: '12px',
+                  padding: '12px 16px',
+                  border: '1px dashed #16a34a',
+                  borderRadius: '10px',
+                  background: 'rgba(22, 163, 74, 0.08)',
+                  color: '#15803d',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ⚡ Quick Test Mode — Direct Chat में जाएं <ArrowRight size={16} />
               </button>
 
               <div className="auth-or"><span />or continue with<span /></div>

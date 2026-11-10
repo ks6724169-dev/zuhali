@@ -1,11 +1,20 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  PanelLeft, SquarePen, Plus, FolderOpen,
+  PanelLeft, SquarePen,
   Monitor, Play, ChevronDown, ChevronRight, Folder, RefreshCw, X, Code2,
   Pencil, Trash2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
+
+const isDummyStarterContent = (content) => {
+  if (typeof content !== 'string') return false;
+  return (
+    content.includes('Zuhali Live App') ||
+    content.includes('Interactive React Prototype') ||
+    content.trim() === 'body { margin: 0; background: #0f172a; color: #f8fafc; }'
+  );
+};
 
 export default function CodeEditor({ onClose, onOpenTerminal }) {
   const { user } = useAuth();
@@ -22,32 +31,65 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       const saved = localStorage.getItem(`zuhali_editor_files_${userKey}`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const clean = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (!['App.jsx', 'main.jsx', 'styles.css', 'package.json'].includes(k)) {
-            clean[k] = v;
+        if (parsed && typeof parsed === 'object') {
+          const clean = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!isDummyStarterContent(v)) {
+              clean[k] = v;
+            }
           }
+          return clean;
         }
-        return clean;
       }
     } catch (e) {}
     return {};
   });
 
-  // Scoped files: strictly show ONLY this project's folder & files in this chat's CodeEditor
+  // Clean out any old dummy starter files from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`zuhali_editor_files_${userKey}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          let hasDummy = false;
+          const clean = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (isDummyStarterContent(v)) {
+              hasDummy = true;
+            } else {
+              clean[k] = v;
+            }
+          }
+          if (hasDummy) {
+            localStorage.setItem(`zuhali_editor_files_${userKey}`, JSON.stringify(clean));
+          }
+        }
+      }
+    } catch (e) {}
+  }, [userKey]);
+
+  // Scoped files: strictly show ONLY this project's real files without dummy/fake starter files
   const displayedFiles = useMemo(() => {
-    if (!projectFolderName) return files;
     const scoped = {};
-    const prefix = `${projectFolderName}/`;
-    for (const [k, v] of Object.entries(files)) {
-      if (k.startsWith(prefix) || k === projectFolderName) {
+    if (projectFolderName) {
+      const prefix = `${projectFolderName}/`;
+      for (const [k, v] of Object.entries(files)) {
+        if (isDummyStarterContent(v)) continue;
+        if (k.startsWith(prefix)) {
+          scoped[k] = v;
+        }
+      }
+    } else {
+      for (const [k, v] of Object.entries(files)) {
+        if (isDummyStarterContent(v)) continue;
         scoped[k] = v;
       }
     }
     return scoped;
   }, [files, projectFolderName]);
 
-  const [explorerOpen, setExplorerOpen] = useState(true);
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [activeFile, setActiveFile] = useState(() => Object.keys(displayedFiles)[0] || null);
   const [fileSearch, setFileSearch] = useState('');
   const [newFilePrompt, setNewFilePrompt] = useState(false);
@@ -67,7 +109,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
   }, [displayedFiles, activeFile]);
 
   // Long-press folder context menu & operations
-  const [folderMenu, setFolderMenu] = useState(null); // { folderName, x, y }
+  const [folderMenu, setFolderMenu] = useState(null);
   const [renamingFolder, setRenamingFolder] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingFolder, setDeletingFolder] = useState(null);
@@ -76,6 +118,46 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+  const sidebarRef = useRef(null);
+  const toggleBtnRef = useRef(null);
+
+  // Auto-close sidebar on click / tap outside
+  useEffect(() => {
+    if (!explorerOpen) return;
+    const handleClickOutside = (e) => {
+      if (
+        sidebarRef.current &&
+        !sidebarRef.current.contains(e.target) &&
+        toggleBtnRef.current &&
+        !toggleBtnRef.current.contains(e.target)
+      ) {
+        setExplorerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [explorerOpen]);
+
+  // Listen for navigation requests from Terminal header (open sidebar, open preview)
+  useEffect(() => {
+    const handleOpenSidebar = () => {
+      setExplorerOpen(true);
+      setShowPreview(false);
+    };
+    const handleOpenPreview = () => {
+      setShowPreview(true);
+    };
+    window.addEventListener('zuhali_open_sidebar', handleOpenSidebar);
+    window.addEventListener('zuhali_open_preview', handleOpenPreview);
+    return () => {
+      window.removeEventListener('zuhali_open_sidebar', handleOpenSidebar);
+      window.removeEventListener('zuhali_open_preview', handleOpenPreview);
+    };
+  }, []);
 
   // Live Sync with AI Developer Agent created files
   useEffect(() => {
@@ -171,7 +253,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     // Sync rename to backend disk
     try {
       await fetch(
-        `http://localhost:8000/api/v1/chat/project/rename?old_name=${encodeURIComponent(oldName)}&new_name=${encodeURIComponent(newFolder)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+        `/api/v1/chat/project/rename?old_name=${encodeURIComponent(oldName)}&new_name=${encodeURIComponent(newFolder)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
         { method: 'PATCH' }
       );
     } catch (e) {}
@@ -203,7 +285,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     // Sync delete to backend disk
     try {
       await fetch(
-        `http://localhost:8000/api/v1/chat/project?project_name=${encodeURIComponent(folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+        `/api/v1/chat/project?project_name=${encodeURIComponent(folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
         { method: 'DELETE' }
       );
     } catch (e) {}
@@ -214,6 +296,11 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     const folders = {};
     const rootFiles = [];
     const query = fileSearch.trim().toLowerCase();
+
+    // Ensure active project folder ALWAYS appears in the tree!
+    if (projectFolderName) {
+      folders[projectFolderName] = [];
+    }
 
     Object.keys(displayedFiles).forEach((fullPath) => {
       if (query && !fullPath.toLowerCase().includes(query)) return;
@@ -230,7 +317,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     });
 
     return { folders, rootFiles };
-  }, [displayedFiles, fileSearch]);
+  }, [displayedFiles, fileSearch, projectFolderName]);
 
   // Create new file
   const handleCreateFile = (e) => {
@@ -316,40 +403,82 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
     }
   };
 
-  // Live Preview HTML Compiler (using project-scoped files)
+  // Live Preview Compiler supporting HTML, CSS, JavaScript, and React JSX
   const previewHtml = useMemo(() => {
-    const htmlKey = Object.keys(displayedFiles).find(
-      (k) => k.endsWith('.html') || k.endsWith('.htm')
+    const fileEntries = Object.entries(displayedFiles);
+
+    const htmlEntry = fileEntries.find(
+      ([k]) => k.endsWith('.html') || k.endsWith('.htm')
     );
-    if (!htmlKey) {
-      return `<!DOCTYPE html><html><body style="font-family:'Segoe UI',sans-serif;padding:40px;color:#64748b;text-align:center;"><h3>No HTML File in this Project</h3><p>Create or select an <code>index.html</code> file to preview your web application.</p></body></html>`;
-    }
 
-    let html = displayedFiles[htmlKey] || '';
+    const cssContent = fileEntries
+      .filter(([k]) => k.endsWith('.css'))
+      .map(([, v]) => v)
+      .join('\n');
 
-    // Inject CSS
-    const cssKeys = Object.keys(displayedFiles).filter((k) => k.endsWith('.css'));
-    const combinedCss = cssKeys.map((k) => displayedFiles[k]).join('\n');
-    if (combinedCss) {
-      if (html.includes('</head>')) {
-        html = html.replace('</head>', `<style>\n${combinedCss}\n</style></head>`);
-      } else {
-        html = `<style>\n${combinedCss}\n</style>` + html;
+    const jsContent = fileEntries
+      .filter(([k]) => (k.endsWith('.js') || k.endsWith('.jsx')) && !k.endsWith('.json'))
+      .map(([, v]) => v)
+      .join('\n;\n');
+
+    if (htmlEntry && htmlEntry[1]) {
+      let html = htmlEntry[1];
+
+      if (cssContent) {
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `<style>\n${cssContent}\n</style></head>`);
+        } else {
+          html = `<style>\n${cssContent}\n</style>` + html;
+        }
       }
-    }
 
-    // Inject JS
-    const jsKeys = Object.keys(displayedFiles).filter((k) => k.endsWith('.js') && !k.endsWith('.json'));
-    const combinedJs = jsKeys.map((k) => displayedFiles[k]).join('\n;\n');
-    if (combinedJs) {
-      if (html.includes('</body>')) {
-        html = html.replace('</body>', `<script>\n${combinedJs}\n</script></body>`);
-      } else {
-        html = html + `<script>\n${combinedJs}\n</script>`;
+      if (jsContent) {
+        if (html.includes('</body>')) {
+          html = html.replace('</body>', `<script>\n${jsContent}\n</script></body>`);
+        } else {
+          html = html + `<script>\n${jsContent}\n</script>`;
+        }
       }
+
+      return html;
     }
 
-    return html;
+    // React/JSX Fallback Compiler Shell
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .preview-card { background: #1e293b; padding: 32px; border-radius: 16px; border: 1px solid #334155; text-align: center; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    ${cssContent}
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root">
+    <div class="preview-card">
+      <h2>🚀 Live App Preview</h2>
+      <p>Your interactive application component preview is active.</p>
+    </div>
+  </div>
+  <script type="text/babel">
+    try {
+      ${jsContent.replace(/import\s+.*?from\s+['"].*?['"];?/g, '')}
+      if (typeof App !== 'undefined') {
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+      }
+    } catch(err) {
+      console.log('Preview Note:', err.message);
+    }
+  </script>
+</body>
+</html>`;
   }, [displayedFiles, previewKey]);
 
   const fileList = Object.keys(displayedFiles);
@@ -362,18 +491,27 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       {/* Top Header */}
       <header className="code-editor-header">
         <button
+          ref={toggleBtnRef}
           className="code-header-icon"
           type="button"
           aria-label="Toggle sidebar"
           title="Toggle sidebar"
-          onClick={() => setExplorerOpen((v) => !v)}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (showPreview) {
+              setShowPreview(false);
+              setExplorerOpen(true);
+            } else {
+              setExplorerOpen((v) => !v);
+            }
+          }}
         >
           <PanelLeft size={20} />
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
           <strong style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
-            {showPreview ? 'Live Preview' : (activeProject?.name || 'Code Workspace')}
+            {activeProject?.name || 'Code Workspace'}
           </strong>
         </div>
 
@@ -422,28 +560,10 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
       <div className="code-editor-body">
         {/* Left Sidebar (VS Code Style Explorer - Auto-closed in Preview mode) */}
         {!showPreview && explorerOpen && (
-          <aside className="code-editor-sidebar">
+          <aside className="code-editor-sidebar" ref={sidebarRef}>
             <div className="explorer-content-wrap">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 8px' }}>
                 <div className="explorer-project" style={{ padding: 0, fontSize: 11 }}>WORKSPACE FILES</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    title="New File"
-                    onClick={() => setNewFilePrompt(true)}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--accent-color, #16a34a)', padding: 2, display: 'flex' }}
-                  >
-                    <Plus size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    title="Open File from Computer"
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', color: '#64748b', padding: 2, display: 'flex' }}
-                  >
-                    <FolderOpen size={18} />
-                  </button>
-                </div>
               </div>
 
               {newFilePrompt && (
@@ -471,7 +591,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
               )}
 
               <div className="explorer-tree">
-                {fileList.length === 0 ? (
+                {fileList.length === 0 && !projectFolderName ? (
                   <div style={{ padding: '36px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
                     <p style={{ margin: '0 0 14px', fontWeight: 500 }}>No files in workspace</p>
                     <button
@@ -587,7 +707,7 @@ export default function CodeEditor({ onClose, onOpenTerminal }) {
           </div>
         ) : (
           <main className="code-editor-main">
-            {activeFile ? (
+            {activeFile && displayedFiles[activeFile] !== undefined ? (
               <>
                 <div className="code-editor-tabbar">
                   <div className="code-editor-tab">

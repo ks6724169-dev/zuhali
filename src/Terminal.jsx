@@ -1,8 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { PanelLeft, Monitor, Plus, Trash2 } from 'lucide-react';
+import { useChat } from './context/ChatContext';
 import './terminal.css';
 
-export default function Terminal({ onClose }) {
+export default function Terminal({ onClose, onOpenEditor, onOpenPreview }) {
+  const { currentConv, startNewChat } = useChat();
+  const activeProject = currentConv?.activeProject;
+
   const [terminals, setTerminals] = useState(() => {
     let initialLines = [
       'Zuhali Terminal v1.0.0 [Production Shell]',
@@ -148,17 +152,60 @@ export default function Terminal({ onClose }) {
 
   return (
     <main className="zuhali-terminal-screen">
-      <header className="zuhali-terminal-header">
-        <div className="zuhali-terminal-name">Zuhali Terminal</div>
-        <div className="zuhali-terminal-actions">
-          <button type="button" aria-label="New Terminal" title="New Terminal" onClick={newTerminal}>
+      {/* Header matching CodeEditor screen */}
+      <header className="code-editor-header">
+        <button
+          className="code-header-icon"
+          type="button"
+          aria-label="Open sidebar in Code Editor"
+          title="Open sidebar in Code Editor"
+          onClick={() => {
+            if (onOpenEditor) onOpenEditor(true);
+          }}
+        >
+          <PanelLeft size={20} />
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
+          <strong style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-primary, #1e293b)' }}>
+            {activeProject?.name || 'Code Workspace'}
+          </strong>
+        </div>
+
+        <div className="code-header-spacer" />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Terminal Button (Active) */}
+          <button
+            type="button"
+            className="code-header-tool-btn active"
+            title="Terminal"
+            onClick={() => inputRef.current?.focus()}
+          >
+            <Monitor size={15} />
+            <span>Terminal</span>
+          </button>
+
+          {/* New Terminal Tab Button */}
+          <button
+            type="button"
+            className="code-header-icon"
+            aria-label="New Terminal Tab"
+            title="New Terminal Tab"
+            onClick={newTerminal}
+          >
             <Plus size={19} />
           </button>
-          <button type="button" aria-label="Clear Terminal" title="Clear Terminal" onClick={clearTerminal}>
+
+          {/* Clear Terminal Output */}
+          <button
+            type="button"
+            className="code-header-icon"
+            aria-label="Clear Terminal Output"
+            title="Clear Terminal Output"
+            onClick={clearTerminal}
+          >
             <Trash2 size={18} />
-          </button>
-          <button type="button" aria-label="Close Terminal" title="Close Terminal" onClick={onClose}>
-            <X size={19} />
           </button>
         </div>
       </header>
