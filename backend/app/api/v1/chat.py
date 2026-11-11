@@ -2,31 +2,21 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.schemas.chat import ChatStreamRequest, MessageFeedbackRequest
 from app.services.ai_stream import generate_ai_stream
-from app.services.dev_agent import generate_developer_agent_stream
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 @router.post("/stream")
 async def chat_stream(req: ChatStreamRequest):
     """
-    ChatGPT-like Server-Sent Events (SSE) streaming endpoint.
+    Direct ChatGPT-like Server-Sent Events (SSE) streaming endpoint.
     Supports:
-    - Multi-turn conversation memory history
-    - Autonomous Developer Agent (when req.developer_mode is True)
-    - Multimodal image analysis (OCR, Vision, Charts, UI)
-    - File code & document extraction and analysis
+    - Natural conversation with memory
+    - Code generation and explanation
+    - Multimodal image and file analysis
     """
     prompt = req.message or ""
-
-    if req.developer_mode:
-        generator = generate_developer_agent_stream(
-            prompt,
-            req.user_email,
-            project_name=req.project_name,
-            project_title=req.project_title
-        )
-    else:
-        generator = generate_ai_stream(prompt, req.model, req.messages, req.attachment)
+    selected_mode = (req.mode or req.model or "medium").lower()
+    generator = generate_ai_stream(prompt, selected_mode, req.messages, req.attachment)
 
     return StreamingResponse(
         generator,

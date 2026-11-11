@@ -2,18 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   PanelLeft, SquarePen, MoreHorizontal, Copy, Pencil, Share2, Pin,
   Archive, FolderPlus, Download, Flag, Trash2, GitBranch, Volume2,
-  Heart, ThumbsDown, RefreshCw, Folder, Camera, Code2, Monitor, Mic,
+  Heart, ThumbsDown, RefreshCw, Folder, Camera, Mic, SlidersHorizontal,
   ArrowUp, X, Check, Square
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
-import { getLibraryProjects, saveLibraryProjects } from '../../services/libraryService';
 import FormattedMessage from './FormattedMessage';
 
 export default function ChatWorkspace({
-  onToggleSidebar,
-  onOpenEditor,
-  onOpenTerminal
+  onToggleSidebar
 }) {
   const { user } = useAuth();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
@@ -34,24 +31,115 @@ export default function ChatWorkspace({
     toggleSpeakResponse,
     setActiveFeedbackModal,
     setActiveRenameModal,
-    getConversationText,
-    setConversationProject
+    getConversationText
   } = useChat();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState(null);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [developerMode, setDeveloperMode] = useState(false);
-  const [developerPanel, setDeveloperPanel] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
   const [activeUserMenu, setActiveUserMenu] = useState(null);
 
-  // Create Project Modal States
-  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
-  const [projectNameInput, setProjectNameInput] = useState('');
-  const [projectDescInput, setProjectDescInput] = useState('');
+  // Model Intelligence & Speed Modes (Fast, Medium, Complex High)
+  const MODES = [
+    {
+      id: 'fast',
+      label: 'Fast',
+      badge: '⚡',
+      desc: 'Lightweight & instant speed response',
+      tag: 'Fast'
+    },
+    {
+      id: 'medium',
+      label: 'Medium',
+      badge: '⚖️',
+      desc: 'Balanced reasoning & precision (Default)',
+      tag: 'Standard'
+    },
+    {
+      id: 'complex_high',
+      label: 'Complex High',
+      badge: '🧠',
+      desc: 'Deep analytical reasoning & complex tasks',
+      tag: 'Deep Think'
+    }
+  ];
+
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [reasoningMode, setReasoningMode] = useState(() => {
+    return localStorage.getItem('zuhali_ai_mode') || 'medium';
+  });
+
+  // Voice Speech-to-Text Recognition
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        const recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'hi-IN,en-US';
+
+        recognition.onresult = (event) => {
+          let transcriptText = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcriptText += event.results[i][0].transcript;
+          }
+          if (transcriptText) {
+            setDraft((prev) => {
+              const trimmed = prev.trim();
+              return trimmed ? `${trimmed} ${transcriptText.trim()}` : transcriptText.trim();
+            });
+          }
+        };
+
+        recognition.onerror = (e) => {
+          console.warn('[Speech Recognition]:', e.error);
+          if (e.error !== 'no-speech') {
+            setIsListening(false);
+          }
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+      } catch (err) {
+        console.warn('SpeechRecognition init error:', err);
+      }
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert('Speech Recognition आपके ब्राउज़र में उपलब्ध नहीं है। कृपया Google Chrome या Edge का उपयोग करें।');
+      return;
+    }
+    if (isListening) {
+      try { recognitionRef.current.stop(); } catch {}
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.warn('Recognition start error:', err);
+        setIsListening(false);
+      }
+    }
+  };
+
+  const handleSelectMode = (modeId) => {
+    setReasoningMode(modeId);
+    localStorage.setItem('zuhali_ai_mode', modeId);
+    setModeMenuOpen(false);
+  };
 
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
@@ -90,28 +178,24 @@ export default function ChatWorkspace({
     }
   }, [currentMessages.length, isGenerating]);
 
-  // Auto-activate developer mode if current conversation is attached to a project
-  useEffect(() => {
-    if (currentConv?.activeProject) {
-      setDeveloperMode(true);
-    }
-  }, [currentConv?.id, currentConv?.activeProject]);
-
   // Close popups when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (menuOpen && !e.target.closest('.topbar .menu-anchor')) {
         setMenuOpen(false);
       }
-      if (attachOpen && !e.target.closest('.composer-tools .menu-anchor')) {
+      if (attachOpen && !e.target.closest('.composer-tools .menu-anchor:first-child')) {
         setAttachOpen(false);
+      }
+      if (modeMenuOpen && !e.target.closest('.mode-anchor')) {
+        setModeMenuOpen(false);
       }
       if (activeUserMenu !== null && !e.target.closest('.user-message-menu')) {
         setActiveUserMenu(null);
       }
     };
 
-    if (menuOpen || attachOpen || activeUserMenu !== null) {
+    if (menuOpen || attachOpen || modeMenuOpen || activeUserMenu !== null) {
       document.addEventListener('pointerdown', handleOutsideClick);
       document.addEventListener('click', handleOutsideClick);
     }
@@ -119,48 +203,20 @@ export default function ChatWorkspace({
       document.removeEventListener('pointerdown', handleOutsideClick);
       document.removeEventListener('click', handleOutsideClick);
     };
-  }, [menuOpen, attachOpen, activeUserMenu]);
+  }, [menuOpen, attachOpen, modeMenuOpen, activeUserMenu]);
 
   const handleSend = (e) => {
     e?.preventDefault();
     if (!draft.trim() && !attachment) return;
-    sendMessage(draft, attachment, {
-      developerMode,
-      activeProject: currentConv?.activeProject || null
-    });
+    if (isListening && recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      setIsListening(false);
+    }
+    sendMessage(draft, attachment, { mode: reasoningMode });
     setDraft('');
     setAttachment(null);
     setAttachOpen(false);
-  };
-
-  const handleCreateProject = (e) => {
-    e?.preventDefault();
-    const name = projectNameInput.trim();
-    if (!name) return;
-
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 32) || 'zuhali-project';
-    const newProj = {
-      id: 'proj_' + Date.now(),
-      name: name,
-      folderName: slug,
-      description: projectDescInput.trim(),
-      createdAt: new Date().toISOString(),
-      fileCount: 0,
-      conversationId: currentConv.id
-    };
-
-    // Save to library projects
-    try {
-      const existing = getLibraryProjects(userKey);
-      saveLibraryProjects(userKey, [newProj, ...existing.filter((p) => p.folderName !== slug)]);
-    } catch (err) {}
-
-    // Attach to current conversation
-    setConversationProject(currentConv.id, newProj);
-    setDeveloperMode(true);
-    setCreateProjectModalOpen(false);
-    setProjectNameInput('');
-    setProjectDescInput('');
+    setModeMenuOpen(false);
   };
 
   const copyConversation = async () => {
@@ -270,22 +326,6 @@ export default function ChatWorkspace({
           )}
         </div>
 
-        {/* Center Project Name Badge */}
-        {currentConv?.activeProject && (
-          <div
-            className="topbar-center-project"
-            title={`Active Project: ${currentConv.activeProject.name}`}
-            onClick={() => {
-              setProjectNameInput(currentConv.activeProject.name || '');
-              setProjectDescInput(currentConv.activeProject.description || '');
-              setCreateProjectModalOpen(true);
-            }}
-          >
-            <Folder size={15} className="project-folder-icon" />
-            <span className="project-title-text">{currentConv.activeProject.name}</span>
-          </div>
-        )}
-
         {hasConversation && (
           <div className="header-actions">
             <div className="menu-anchor">
@@ -364,61 +404,12 @@ export default function ChatWorkspace({
                   <>
 
 
-                    {message.devSteps && message.devSteps.length > 0 && (
-                      <div className="dev-agent-card">
-                        <div className="dev-agent-card-header">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div className="dev-agent-pulse-icon">
-                              <Code2 size={15} />
-                            </div>
-                            <strong style={{ fontSize: 13, color: '#0f172a' }}>Autonomous Developer Agent</strong>
-                            {message.projectData?.projectName && (
-                              <span className="dev-project-badge">{message.projectData.projectName}</span>
-                            )}
-                          </div>
-                          {message.isStreaming && (
-                            <span className="dev-agent-status-badge">
-                              <span className="dev-pulse-dot" /> Working...
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="dev-agent-steps">
-                          {message.devSteps.map((step, idx) => (
-                            <div key={idx} className="dev-agent-step-item">
-                              <span className="dev-step-icon">
-                                {step.step === 'mkdir' ? '📁' : step.step === 'file_write' ? '📝' : step.step === 'terminal' ? '💻' : '⚡'}
-                              </span>
-                              <div className="dev-step-body">
-                                <div className="dev-step-title">{step.title}</div>
-                                {step.details && <div className="dev-step-details">{step.details}</div>}
-                                {step.command && <div className="dev-step-command">$ {step.command}</div>}
-                              </div>
-                              <span className="dev-step-check">✓</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {message.projectData && (
-                          <div className="dev-agent-actions">
-                            <button
-                              type="button"
-                              className="dev-action-btn primary"
-                              onClick={onOpenEditor}
-                            >
-                              <Code2 size={15} />
-                              <span>Open in Code Editor</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="dev-action-btn secondary"
-                              onClick={onOpenTerminal}
-                            >
-                              <Monitor size={15} />
-                              <span>Open Terminal</span>
-                            </button>
-                          </div>
-                        )}
+                    {/* Natural clean thinking indicator while generating before text begins */}
+                    {message.isStreaming && !message.text && (
+                      <div className="ai-thinking-indicator" aria-label="Thinking">
+                        <span className="thinking-dot" />
+                        <span className="thinking-dot" />
+                        <span className="thinking-dot" />
                       </div>
                     )}
 
@@ -583,30 +574,6 @@ export default function ChatWorkspace({
           </div>
         )}
 
-        {developerMode && (
-          <div className="mode-chip">
-            <Code2 size={14} />
-            Developer mode
-            <button onClick={() => setDeveloperMode(false)} aria-label="Remove developer mode">
-              <X size={13} />
-            </button>
-          </div>
-        )}
-
-        {developerMode && developerPanel && (
-          <div className="developer-panel-note">
-            <strong>{developerPanel === 'code' ? 'Code Editor' : 'Terminal View'}</strong>
-            <span>
-              {developerPanel === 'code'
-                ? 'Full interactive Code Editor ready with Git preview.'
-                : 'Interactive Web Terminal session active.'}
-            </span>
-            <button type="button" onClick={() => setDeveloperPanel(null)} aria-label="Close developer panel">
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
         <form className="composer" onSubmit={handleSend}>
           <textarea
             ref={inputRef}
@@ -654,64 +621,52 @@ export default function ChatWorkspace({
                     <Folder size={18} />
                     <span>Files</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachOpen(false);
-                      if (!developerMode) {
-                        if (!currentConv?.activeProject) {
-                          setProjectNameInput('');
-                          setProjectDescInput('');
-                          setCreateProjectModalOpen(true);
-                        } else {
-                          setDeveloperMode(true);
-                        }
-                      } else {
-                        setDeveloperMode(false);
-                      }
-                    }}
-                  >
-                    <Code2 size={18} />
-                    <span>Developer</span>
-                  </button>
                 </div>
               )}
             </div>
 
-            {developerMode && (
-              <>
-                <button
-                  type="button"
-                  className="developer-tool-button"
-                  onClick={onOpenEditor}
-                  aria-label="Open code editor"
-                >
-                  <Code2 size={17} />
-                  <span>Code</span>
-                </button>
-                <button
-                  type="button"
-                  className="developer-tool-button"
-                  onClick={onOpenTerminal}
-                  aria-label="Open terminal"
-                >
-                  <Monitor size={17} />
-                  <span>Terminal</span>
-                </button>
-              </>
-            )}
-
             <div className="composer-spacer" />
+
+            {/* Model Speed & Reasoning Mode Popup Selector */}
+            <div className="menu-anchor mode-anchor">
+              <button
+                type="button"
+                className={`mode-button ${modeMenuOpen ? 'is-open' : ''}`}
+                aria-label="Select Intelligence Mode"
+                title={`Mode: ${MODES.find(m => m.id === reasoningMode)?.label || 'Medium'}`}
+                onClick={() => setModeMenuOpen((v) => !v)}
+              >
+                <SlidersHorizontal size={17} />
+              </button>
+
+              {modeMenuOpen && (
+                <div className="mode-popup-menu">
+                  {MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`mode-option-btn ${reasoningMode === m.id ? 'is-selected' : ''}`}
+                      onClick={() => handleSelectMode(m.id)}
+                    >
+                      <span className="mode-option-name">{m.label}</span>
+                      {reasoningMode === m.id && <Check size={16} className="mode-check" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Mic Button for Speech-to-Text */}
             <button
               type="button"
-              className="mic-button"
-              aria-label="Voice input"
-              onClick={() => {
-                setDraft((prev) => (prev ? prev + ' ' : '') + 'Show me the project architecture and terminal execution');
-              }}
+              className={`mic-button ${isListening ? 'is-listening' : ''}`}
+              aria-label={isListening ? "Listening... Click to stop" : "Speak to type"}
+              title={isListening ? "Listening... Click to stop" : "Speak to type"}
+              onClick={toggleListening}
             >
-              <Mic size={19} />
+              <Mic size={18} className={isListening ? 'mic-pulse-icon' : ''} />
             </button>
+
             <button
               type="submit"
               className="send-button"
@@ -751,50 +706,6 @@ export default function ChatWorkspace({
           }
         }}
       />
-      {/* Create New Project Modal (Triggered on Developer Mode) */}
-      {createProjectModalOpen && (
-        <div className="create-project-modal-overlay" onClick={() => setCreateProjectModalOpen(false)}>
-          <div className="create-project-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Create New Project</h2>
-            <form onSubmit={handleCreateProject}>
-              <div className="project-input-group">
-                <label>Project Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter project name..."
-                  value={projectNameInput}
-                  onChange={(e) => setProjectNameInput(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div className="project-input-group">
-                <label>Description (Optional)</label>
-                <textarea
-                  placeholder="Enter project description..."
-                  value={projectDescInput}
-                  onChange={(e) => setProjectDescInput(e.target.value)}
-                  rows={3}
-                />
-              </div>
-              <button
-                type="submit"
-                className="create-project-submit-btn"
-                disabled={!projectNameInput.trim()}
-              >
-                Create Project
-              </button>
-              <button
-                type="button"
-                className="create-project-cancel-btn"
-                onClick={() => setCreateProjectModalOpen(false)}
-              >
-                Cancel
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

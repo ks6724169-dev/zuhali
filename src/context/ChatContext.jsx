@@ -24,6 +24,10 @@ export function ChatProvider({ children }) {
   });
 
   const [activeConvId, setActiveConvId] = useState(() => {
+    const savedActive = localStorage.getItem(`zuhali_active_conv_${userKey}`);
+    if (savedActive) {
+      return savedActive;
+    }
     return 'conv_' + Date.now();
   });
 
@@ -47,6 +51,7 @@ export function ChatProvider({ children }) {
       prevUserKeyRef.current = userKey;
       const savedConvs = localStorage.getItem(`zuhali_conversations_${userKey}`);
       const savedMsgs = localStorage.getItem(`zuhali_messages_map_${userKey}`);
+      const savedActive = localStorage.getItem(`zuhali_active_conv_${userKey}`);
 
       let loadedConvs = [];
       let loadedMsgs = {};
@@ -60,7 +65,7 @@ export function ChatProvider({ children }) {
 
       setConversations(loadedConvs);
       setMessagesMap(loadedMsgs);
-      setActiveConvId('conv_' + Date.now());
+      setActiveConvId(savedActive || (loadedConvs.length > 0 ? loadedConvs[0].id : 'conv_' + Date.now()));
     }
   }, [userKey]);
 
@@ -77,6 +82,13 @@ export function ChatProvider({ children }) {
       localStorage.setItem(`zuhali_messages_map_${userKey}`, JSON.stringify(messagesMap));
     }
   }, [messagesMap, userKey]);
+
+  // Persist active conversation id for this specific user
+  useEffect(() => {
+    if (userKey && activeConvId) {
+      localStorage.setItem(`zuhali_active_conv_${userKey}`, activeConvId);
+    }
+  }, [activeConvId, userKey]);
 
   const currentMessages = messagesMap[activeConvId] || [];
   const currentConv = conversations.find((c) => c.id === activeConvId) || {
@@ -142,37 +154,12 @@ export function ChatProvider({ children }) {
     }
   };
 
-  // Associate project with conversation
-  const setConversationProject = (convId, project) => {
-    setConversations((prev) => {
-      const exists = prev.some((c) => c.id === convId);
-      if (exists) {
-        return prev.map((c) =>
-          c.id === convId ? { ...c, activeProject: project, updatedAt: new Date().toISOString() } : c
-        );
-      } else {
-        const newConv = {
-          id: convId,
-          title: project?.name || 'New Project Chat',
-          isPinned: false,
-          isArchived: false,
-          activeProject: project,
-          updatedAt: new Date().toISOString()
-        };
-        return [newConv, ...prev];
-      }
-    });
-  };
-
   // Send message using Server-Sent Events (SSE) Streaming
   const sendMessage = async (text, attachment = null, options = {}) => {
     if (!text.trim() && !attachment) return;
 
-    const isDevMode = !!options?.developerMode;
     let targetConvId = activeConvId;
     const exists = conversations.some((c) => c.id === targetConvId);
-    const targetConvObj = conversations.find((c) => c.id === targetConvId);
-    const activeProject = options?.activeProject || targetConvObj?.activeProject;
     const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (attachment?.name || 'New chat');
 
     // If this conversation is not yet in the recent chats list, add it!
@@ -216,7 +203,6 @@ export function ChatProvider({ children }) {
       attachment: attachment ? attachment.name : null,
       attachmentType: attachment ? attachment.type : null,
       attachmentData: attachment ? (attachment.dataUrl || null) : null,
-      devMode: isDevMode,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -226,9 +212,6 @@ export function ChatProvider({ children }) {
       assistant: true,
       text: '',
       isStreaming: true,
-      devMode: isDevMode,
-      devSteps: [],
-      projectData: null,
       feedback: null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -253,10 +236,8 @@ export function ChatProvider({ children }) {
           messages: historyPayload,
           attachment: attachmentPayload,
           conversation_id: targetConvId,
-          model: 'zuhali-pro-v1',
-          developer_mode: isDevMode,
-          project_name: activeProject?.folderName || null,
-          project_title: activeProject?.name || null,
+          model: options?.mode || 'medium',
+          mode: options?.mode || 'medium',
           user_email: user?.email || null
         })
       });
@@ -284,64 +265,8 @@ export function ChatProvider({ children }) {
             try {
               const payload = JSON.parse(trimmed.slice(6));
 
-              // 1. Live Developer Step Updates
-              if (payload.type === 'dev_step') {
-                setMessagesMap((prev) => {
-                  const msgs = prev[targetConvId] || [];
-                  return {
-                    ...prev,
-                    [targetConvId]: msgs.map((m) => {
-                      if (m.id !== assistantMessageId) return m;
-                      const existing = m.devSteps || [];
-                      return {
-                        ...m,
-                        devSteps: [...existing, payload]
-                      };
-                    })
-                  };
-                });
-              }
-              // 2. Project Ready with Code Files & Terminal Logs
-              else if (payload.type === 'project_ready') {
-                // Sync files to CodeEditor
-                try {
-                  const editorKey = `zuhali_editor_files_${userKey}`;
-                  const prevFiles = JSON.parse(localStorage.getItem(editorKey) || '{}');
-                  const mergedFiles = { ...prevFiles, ...(payload.files || {}) };
-                  localStorage.setItem(editorKey, JSON.stringify(mergedFiles));
-                  window.dispatchEvent(
-                    new CustomEvent('zuhali_editor_sync', {
-                      detail: {
-                        files: mergedFiles,
-                        activeFile: Object.keys(payload.files || {})[0] || null
-                      }
-                    })
-                  );
-                } catch (e) {}
-
-                // Sync terminal logs
-                try {
-                  const termKey = `zuhali_terminal_logs_${userKey}`;
-                  const prevLogs = JSON.parse(localStorage.getItem(termKey) || '[]');
-                  const updatedLogs = [...prevLogs, ...(payload.terminalLogs || [])];
-                  localStorage.setItem(termKey, JSON.stringify(updatedLogs));
-                  window.dispatchEvent(
-                    new CustomEvent('zuhali_terminal_sync', { detail: { logs: updatedLogs } })
-                  );
-                } catch (e) {}
-
-                setMessagesMap((prev) => {
-                  const msgs = prev[targetConvId] || [];
-                  return {
-                    ...prev,
-                    [targetConvId]: msgs.map((m) =>
-                      m.id === assistantMessageId ? { ...m, projectData: payload } : m
-                    )
-                  };
-                });
-              }
-              // 3. Regular Token Streaming
-              else if (payload.token) {
+              // Token Streaming
+              if (payload.token) {
                 accumulatedText += payload.token;
                 setMessagesMap((prev) => {
                   const msgs = prev[targetConvId] || [];
@@ -359,7 +284,7 @@ export function ChatProvider({ children }) {
       }
     } catch (err) {
       console.warn('[SSE Stream Fallback]:', err.message);
-      const fallbackReply = `I am Zuhali AI. I processed your request: "${text || attachment?.name}". Powered by BharatRouter 120B and Groq LPUs.`;
+      const fallbackReply = `I am Rhynia G1. I processed your request: "${text || attachment?.name}".`;
       let currentText = '';
       for (const word of fallbackReply.split(' ')) {
         await new Promise((r) => setTimeout(r, 30));
@@ -629,7 +554,6 @@ export function ChatProvider({ children }) {
         startNewChat,
         selectChat,
         renameChat,
-        setConversationProject,
         togglePinChat,
         toggleArchiveChat,
         deleteChat,

@@ -10,7 +10,8 @@ class ChatStreamRequest(BaseModel):
     message: Optional[str] = ""
     messages: Optional[List[Dict[str, Any]]] = None
     attachment: Optional[Dict[str, Any]] = None
-    model: Optional[str] = "zuhali-pro-v1"
+    model: Optional[str] = "medium"
+    mode: Optional[str] = None
     system_prompt: Optional[str] = None
     developer_mode: Optional[bool] = False
     project_name: Optional[str] = None

@@ -5,8 +5,6 @@ import { ChatProvider } from './context/ChatContext';
 import AuthScreen from './features/auth/AuthScreen';
 import Sidebar from './components/sidebar/Sidebar';
 import ChatWorkspace from './components/chat/ChatWorkspace';
-import CodeEditor from './components/editor/CodeEditor';
-import Terminal from './Terminal';
 import FeedbackModal from './components/chat/FeedbackModal';
 import RenameModal from './components/chat/RenameModal';
 import LibraryScreen from './features/library/LibraryScreen';
@@ -27,8 +25,6 @@ function MainAppShell() {
   const { currentAccent } = useTheme();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
   const [activeScreen, setActiveScreen] = useState(null); // 'settings', 'appearance', 'language', 'notifications', 'storage', 'profile', 'billing', 'help'
 
   return (
@@ -38,31 +34,6 @@ function MainAppShell() {
     >
       {authView !== 'app' ? (
         <AuthScreen />
-      ) : terminalOpen ? (
-        <Terminal
-          onClose={() => setTerminalOpen(false)}
-          onOpenEditor={(openSidebar = false) => {
-            setTerminalOpen(false);
-            setEditorOpen(true);
-            if (openSidebar) {
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('zuhali_open_sidebar'));
-              }, 20);
-            }
-          }}
-          onOpenPreview={() => {
-            setTerminalOpen(false);
-            setEditorOpen(true);
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('zuhali_open_preview'));
-            }, 20);
-          }}
-        />
-      ) : editorOpen ? (
-        <CodeEditor
-          onClose={() => setEditorOpen(false)}
-          onOpenTerminal={() => setTerminalOpen(true)}
-        />
       ) : activeScreen === 'settings' ? (
         <SettingsScreen
           onClose={() => setActiveScreen(null)}
@@ -97,8 +68,6 @@ function MainAppShell() {
           />
           <ChatWorkspace
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
-            onOpenEditor={() => setEditorOpen(true)}
-            onOpenTerminal={() => setTerminalOpen(true)}
           />
         </>
       )}

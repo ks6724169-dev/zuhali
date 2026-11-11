@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { spawn, ChildProcess } from 'child_process';
+import { handleLiveSearchForPrompt } from './src/services/search/index.js';
 
 dotenv.config();
 
@@ -70,7 +71,7 @@ function ensurePythonBackendRunning() {
     console.log(`[Microservice Architecture] Spawning Python FastAPI Brain on port ${PYTHON_BACKEND_PORT}...`);
     try {
       const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
-      pythonProcess = spawn(pyCmd, ['-m', 'uvicorn', 'app.main:app', '--app-dir', 'backend', '--port', String(PYTHON_BACKEND_PORT), '--host', '127.0.0.1'], {
+      pythonProcess = spawn(pyCmd, ['-m', 'uvicorn', 'app.main:app', '--app-dir', 'backend', '--port', String(PYTHON_BACKEND_PORT), '--host', '127.0.0.1', '--reload'], {
         cwd: __dirname,
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -371,6 +372,7 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
     message = '',
     messages = [],
     model = '',
+    mode = '',
     attachment = null,
     developer_mode = false,
     project_title = null,
@@ -378,7 +380,22 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
     user_email = null
   } = req.body;
 
-  const userPrompt = message.trim() || (attachment ? `Analysis of file: ${attachment.name}` : 'Hello');
+  let userPrompt = message.trim() || (attachment ? `Analysis of file: ${attachment.name}` : 'Hello');
+
+  // ------------------------------------------------------------------
+  // Live Internet Grounding (Automatic 7-Level Cascading Fallback)
+  // ------------------------------------------------------------------
+  try {
+    const liveSearch = await handleLiveSearchForPrompt(userPrompt);
+    if (liveSearch.triggered && liveSearch.groundingText) {
+      console.log(`[ChatStream] 🌐 Grounded with live search from ${liveSearch.providerUsed} (${liveSearch.results?.length} sources)`);
+      userPrompt = `${liveSearch.groundingText}\n\n[USER QUERY]:\n${userPrompt}`;
+      // Send a silent status or metadata token so UI can know if it wants
+      res.write(`data: ${JSON.stringify({ live_search: { active: true, provider: liveSearch.providerUsed, count: liveSearch.results?.length || 0 } })}\n\n`);
+    }
+  } catch (searchErr: any) {
+    console.warn('[ChatStream] Live search check skipped:', searchErr?.message);
+  }
 
   // Helper send SSE event
   const sendSSE = (obj: any) => {
@@ -421,7 +438,8 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: userPrompt,
-            model: model || 'openai/gpt-oss-120b',
+            model: (mode || model || 'medium').toLowerCase(),
+            mode: (mode || model || 'medium').toLowerCase(),
             messages: messages || [],
             developer_mode: !!developer_mode,
             project_name: project_name || '',
@@ -505,9 +523,18 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
 
   // 1. Primary: Groq API with GPT-OSS 120B (openai/gpt-oss-120b)
   if (groqKey) {
-    const formattedMessages = Array.isArray(messages) && messages.length > 0
-      ? messages.map((m: any) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || m.text || '' }))
-      : [{ role: 'user', content: userPrompt }];
+    const systemInstruction = `You are Rhynia G1.
+CRITICAL FORMATTING GUIDELINES:
+- Do NOT use markdown tables for normal explanations, roadmaps, study plans, history, guides, or concepts.
+- Always format answers naturally using clean paragraphs, bold headers, and bullet points (* or 1, 2, 3).
+- ONLY use a table when the user explicitly asks for a table or for compact numeric data.`;
+
+    const formattedMessages = [
+      { role: 'system', content: systemInstruction },
+      ...(Array.isArray(messages) && messages.length > 0
+        ? messages.map((m: any) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || m.text || '' }))
+        : [{ role: 'user', content: userPrompt }])
+    ];
 
     const groqCandidateModels = ['openai/gpt-oss-120b', 'gpt-oss-120b', 'llama-3.3-70b-versatile'];
     let lastGroqError = '';
@@ -601,7 +628,10 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
         try {
           const responseStream = await client.models.generateContentStream({
             model: modelName,
-            contents
+            contents,
+            config: {
+              systemInstruction: 'You are Rhynia G1. Write responses naturally using clean paragraphs, headings, and bullet points. Do NOT force explanations into tables unless explicitly asked.'
+            }
           });
           for await (const chunk of responseStream) {
             if (chunk.text) {
@@ -647,6 +677,52 @@ app.get('/api/v1/chat/feedback', (req: Request, res: Response) => {
     count: feedbackStore.length,
     feedbacks: feedbackStore
   });
+});
+
+app.get('/api/v1/chat/project/files', (req: Request, res: Response) => {
+  const { project_name, user_email } = req.query;
+  if (!project_name) return res.status(400).json({ error: 'project_name required' });
+
+  const userKey = user_email ? String(user_email).toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest_zuhali_ai';
+  const targetDir = path.resolve(__dirname, 'workspace', 'projects', userKey, String(project_name));
+
+  const readDirFiles = (dirPath: string) => {
+    const resFiles: Record<string, string> = {};
+    const readRec = (d: string, pfx: string) => {
+      const items = fs.readdirSync(d);
+      for (const it of items) {
+        const full = path.join(d, it);
+        const key = pfx ? `${pfx}/${it}` : it;
+        if (fs.statSync(full).isDirectory()) {
+          readRec(full, key);
+        } else {
+          try {
+            resFiles[`${project_name}/${key}`] = fs.readFileSync(full, 'utf-8');
+          } catch(e) {}
+        }
+      }
+    };
+    readRec(dirPath, '');
+    return resFiles;
+  };
+
+  if (fs.existsSync(targetDir)) {
+    return res.json({ status: 'success', files: readDirFiles(targetDir) });
+  }
+
+  // Fallback search in all workspace/projects subfolders
+  const projectsRoot = path.resolve(__dirname, 'workspace', 'projects');
+  if (fs.existsSync(projectsRoot)) {
+    const userDirs = fs.readdirSync(projectsRoot);
+    for (const u of userDirs) {
+      const altDir = path.join(projectsRoot, u, String(project_name));
+      if (fs.existsSync(altDir) && fs.statSync(altDir).isDirectory()) {
+        return res.json({ status: 'success', files: readDirFiles(altDir) });
+      }
+    }
+  }
+
+  return res.json({ status: 'not_found', files: {} });
 });
 
 app.delete('/api/v1/chat/project', async (req: Request, res: Response) => {
@@ -715,7 +791,14 @@ app.get('/health', async (req: Request, res: Response) => {
 if (process.env.NODE_ENV !== 'production') {
   const { createServer: createViteServer } = await import('vite');
   const vite = await createViteServer({
-    server: { middlewareMode: true, host: '0.0.0.0', port: PORT },
+    server: {
+      middlewareMode: true,
+      host: '0.0.0.0',
+      port: PORT,
+      watch: {
+        ignored: ['**/workspace/**', '**/backend/**', '**/.git/**']
+      }
+    },
     appType: 'spa'
   });
   app.use(vite.middlewares);
@@ -725,6 +808,34 @@ if (process.env.NODE_ENV !== 'production') {
     res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
   });
 }
+
+// ------------------------------------------------------------------
+// Standalone Live Search API Endpoint (7-Tier Cascading Fallback)
+// ------------------------------------------------------------------
+app.post('/api/v1/search/live', async (req: Request, res: Response) => {
+  try {
+    const { query = '', max_results = 5 } = req.body;
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Query is required and must be a string' });
+    }
+
+    const result = await handleLiveSearchForPrompt(query);
+    return res.json({
+      success: true,
+      query,
+      triggered: result.triggered,
+      provider_used: result.providerUsed || 'None',
+      results_count: result.results?.length || 0,
+      results: result.results || [],
+      duration_ms: result.durationMs || 0,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error during search',
+    });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Zuhali App] Server running at http://0.0.0.0:${PORT}`);
