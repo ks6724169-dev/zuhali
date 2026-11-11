@@ -525,9 +525,9 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
   if (groqKey) {
     const systemInstruction = `You are Rhynia G1.
 CRITICAL FORMATTING GUIDELINES:
-- Do NOT use markdown tables for normal explanations, roadmaps, study plans, history, guides, or concepts.
-- Always format answers naturally using clean paragraphs, bold headers, and bullet points (* or 1, 2, 3).
-- ONLY use a table when the user explicitly asks for a table or for compact numeric data.`;
+- ABSOLUTELY NEVER USE MARKDOWN TABLES (never use '|' pipe table syntax). Tables look cluttered, broken, and ugly on chat screens.
+- ALWAYS format roadmaps, study plans, time tables, syllabus, book recommendations, timelines, and guides using clean structured paragraphs, bold section headers (###), and bullet points (* or 1, 2, 3).
+- Exception: ONLY generate a table if the user explicitly asks for a table by using the word "table" or "टेबल" in their message. Otherwise, STRICTLY avoid markdown tables.`;
 
     const formattedMessages = [
       { role: 'system', content: systemInstruction },
@@ -630,7 +630,7 @@ CRITICAL FORMATTING GUIDELINES:
             model: modelName,
             contents,
             config: {
-              systemInstruction: 'You are Rhynia G1. Write responses naturally using clean paragraphs, headings, and bullet points. Do NOT force explanations into tables unless explicitly asked.'
+              systemInstruction: 'You are Rhynia G1. ABSOLUTELY NEVER USE MARKDOWN TABLES (never use | pipe syntax). Format everything into clean paragraphs, bold headers, and bullet points unless the user explicitly requests a table.'
             }
           });
           for await (const chunk of responseStream) {

@@ -1,25 +1,13 @@
 import { ISearchProvider, SearchResponse, SearchResultItem } from './types.js';
-import { DuckDuckGoProvider } from './providers/duckduckgo.provider.js';
-import { WikipediaProvider } from './providers/wikipedia.provider.js';
-import { TavilyProvider } from './providers/tavily.provider.js';
-import { GoogleSearchProvider } from './providers/google.provider.js';
-import { SerperProvider } from './providers/serper.provider.js';
-import { SerpApiProvider } from './providers/serpapi.provider.js';
-import { SearXNGProvider } from './providers/searxng.provider.js';
+import { TinyFishProvider } from './providers/tinyfish.provider.js';
 
 export class SearchOrchestrator {
   private providers: ISearchProvider[];
 
   constructor() {
-    // All 7 Specialized Search Engines in Fleet
+    // Dedicated Live Web Search Engine: TinyFish AI
     this.providers = [
-      new DuckDuckGoProvider(),   // 1. DuckDuckGo (Free, Instant Answers)
-      new WikipediaProvider(),    // 2. Wikipedia (Free, Encyclopedic Facts)
-      new SearXNGProvider(),      // 3. SearXNG (Free, Meta-Search)
-      new TavilyProvider(),       // 4. Tavily (AI Web Search)
-      new GoogleSearchProvider(), // 5. Google Custom Search
-      new SerperProvider(),       // 6. Serper.dev Google API
-      new SerpApiProvider(),      // 7. SerpAPI
+      new TinyFishProvider(),
     ];
   }
 

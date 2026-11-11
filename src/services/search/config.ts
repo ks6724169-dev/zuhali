@@ -35,21 +35,7 @@ function readEnvKey(keyName: string): string {
 }
 
 export const searchSecurityConfig = {
-  // External APIs (Optional - if missing, cascade skips to free engines)
-  tavilyApiKey: () => readEnvKey('TAVILY_API_KEY'),
-  googleSearchApiKey: () => readEnvKey('GOOGLE_SEARCH_API_KEY'),
-  googleSearchCx: () => readEnvKey('GOOGLE_SEARCH_CX'),
-  serperApiKey: () => readEnvKey('SERPER_API_KEY'),
-  serpApiKey: () => readEnvKey('SERPAPI_API_KEY'),
-
-  // Public SearXNG Instances (Rotated automatically)
-  searxngInstances: [
-    'https://searx.be',
-    'https://search.ononoki.org',
-    'https://searx.work',
-    'https://searx.tiekoetter.com',
-  ],
-
-  // Limits & Timeouts
-  timeoutMs: 4500, // Max 4.5s per provider before cascading to next
+  // Dedicated Live Web Search Engine
+  tinyfishApiKey: () => readEnvKey('TINYFISH_API_KEY') || 'sk-tinyfish-MavQoQiqCeY-8CcNjtmWn1RiKDsyNyNz',
+  timeoutMs: 8000,
 };
