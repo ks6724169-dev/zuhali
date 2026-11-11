@@ -511,13 +511,7 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
   let streamSuccess = false;
   let streamedText = '';
 
-  const groqKey = (
-    getDynamicEnv('GROQ_API_KEY') ||
-    getDynamicEnv('GROK_API_KEY') ||
-    getDynamicEnv('BHARATROUTER_API_KEY') ||
-    getDynamicEnv('OPENROUTER_API_KEY') ||
-    ''
-  ).trim();
+  const groqKey = (getDynamicEnv('GROQ_API_KEY') || '').trim();
 
   const geminiKey = (getDynamicEnv('GEMINI_API_KEY') || getDynamicEnv('API_KEY') || '').trim();
 
@@ -536,7 +530,7 @@ CRITICAL FORMATTING GUIDELINES:
         : [{ role: 'user', content: userPrompt }])
     ];
 
-    const groqCandidateModels = ['openai/gpt-oss-120b', 'gpt-oss-120b', 'llama-3.3-70b-versatile'];
+    const groqCandidateModels = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'];
     let lastGroqError = '';
 
     for (const modelId of groqCandidateModels) {

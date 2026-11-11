@@ -14,6 +14,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 VISION_MODELS = [
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "nvidia/nemotron-3.5-super-vl:free",
     "google/gemma-4-26b-a4b-it:free",
     "google/gemma-4-31b-it:free"
