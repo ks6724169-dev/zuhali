@@ -623,7 +623,7 @@ CRITICAL FORMATTING GUIDELINES:
         contents.push({ role: 'user', parts: [{ text: userPrompt }] });
       }
 
-      for (const modelName of ['gemini-3.8-flash', 'gemini-3.1-flash-lite']) {
+      for (const modelName of ['gemini-3.5-flash-lite']) {
         if (streamSuccess) break;
         try {
           const responseStream = await client.models.generateContentStream({
