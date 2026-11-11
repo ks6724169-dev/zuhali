@@ -447,7 +447,7 @@ app.post('/api/v1/chat/stream', async (req: Request, res: Response) => {
             user_email: user_email || '',
             attachment: attachment || null
           }),
-          signal: AbortSignal.timeout(60000)
+          signal: AbortSignal.timeout(180000)
         });
 
         if (pyRes.ok && pyRes.body) {

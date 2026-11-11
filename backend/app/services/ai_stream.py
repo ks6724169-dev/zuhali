@@ -20,7 +20,7 @@ VISION_MODELS = [
     "google/gemma-4-31b-it:free"
 ]
 
-HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=25.0, write=5.0, pool=5.0)
+HTTP_TIMEOUT = httpx.Timeout(connect=6.0, read=90.0, write=6.0, pool=6.0)
 
 # =====================================================================
 # 1. BHARATROUTER STREAMING (Ultra-Fast 120B ~1.15s)
@@ -37,6 +37,7 @@ async def stream_bharatrouter(messages: List[Dict[str, str]], model: str = "gpt-
     payload = {
         "model": model,
         "messages": messages,
+        "max_tokens": 4096,
         "stream": True,
         "temperature": 0.7
     }
@@ -76,7 +77,7 @@ async def stream_openrouter(messages: List[Dict[str, str]], model: str = "openro
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": 1600,
+        "max_tokens": 4096,
         "stream": True,
         "temperature": 0.7
     }
@@ -115,7 +116,13 @@ async def stream_gemini(messages: List[Dict[str, str]], model: str = "gemini-3.5
     if not contents:
         contents = [{"role": "user", "parts": [{"text": "Hello"}]}]
 
-    payload = {"contents": contents}
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "maxOutputTokens": 4096,
+            "temperature": 0.7
+        }
+    }
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         async with client.stream("POST", url, json=payload) as r:
@@ -150,6 +157,7 @@ async def stream_groq(messages: List[Dict[str, str]], model: str = "openai/gpt-o
     payload = {
         "model": model,
         "messages": messages,
+        "max_tokens": 4096,
         "stream": True,
         "temperature": 0.7
     }
@@ -184,6 +192,7 @@ async def stream_cloudflare(messages: List[Dict[str, str]], model: str = "@cf/op
     }
     payload = {
         "messages": messages,
+        "max_tokens": 4096,
         "stream": True
     }
 
@@ -221,7 +230,7 @@ async def stream_sarvam(messages: List[Dict[str, str]], model: str = "sarvam-105
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1500
+        "max_tokens": 4096
     }
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
