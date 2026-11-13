@@ -109,34 +109,86 @@ import shutil
 import re
 from pathlib import Path
 from typing import Optional
+import re
+import shutil
 
 WORKSPACE_ROOT = (Path(__file__).resolve().parent.parent.parent.parent / "workspace" / "projects").resolve()
+MAX_PROJECT_BYTES = 50 * 1024 * 1024  # 50 MB max per project
+MAX_PROJECT_FILES = 500
 
-def _safe_project_dir(user_email: Optional[str], project_name: str) -> Path:
+def _resolve_effective_identity(
+    authorization: Optional[str] = None,
+    x_guest_session_id: Optional[str] = None,
+    requested_email: Optional[str] = None
+) -> str:
+    """
+    Cryptographic identity resolver to defeat BOLA/IDOR impersonation:
+    - If user presents a valid JWT, identity is bound strictly to the token 'sub'.
+    - If unauthenticated, impersonating any registered email is strictly forbidden (HTTP 403).
+    - Guests receive an isolated session sandbox (`guest_<sessionId>`).
+    """
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+        claims = decode_access_token(token)
+        if claims and claims.get("sub"):
+            return re.sub(r'[^a-z0-9]', '_', str(claims["sub"]).lower())
+
+    if requested_email and "@" in requested_email:
+        raise HTTPException(
+            status_code=403,
+            detail="Valid authentication token required to access or modify registered user projects."
+        )
+
+    if x_guest_session_id and re.match(r'^[a-zA-Z0-9_-]{8,64}$', x_guest_session_id):
+        return f"guest_{x_guest_session_id.lower()}"
+
+    return "guest_developer"
+
+def _safe_project_dir(user_key: str, project_name: str) -> Path:
     if not project_name or len(project_name) > 80 or ".." in project_name or "/" in project_name or "\\" in project_name:
         raise HTTPException(status_code=400, detail="Invalid project name")
     if not re.match(r'^[a-zA-Z0-9._-]+$', project_name):
         raise HTTPException(status_code=400, detail="Project name contains disallowed characters")
-    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
-    candidate = (WORKSPACE_ROOT / user_key / project_name).resolve()
+    
+    safe_user_key = re.sub(r'[^a-z0-9_]', '_', user_key) or "guest_developer"
+    candidate = (WORKSPACE_ROOT / safe_user_key / project_name).resolve()
+    
+    # Path Traversal Guard: Ensure candidate resides strictly under WORKSPACE_ROOT
     if not candidate.is_relative_to(WORKSPACE_ROOT):
-        raise HTTPException(status_code=400, detail="Unsafe project path")
+        raise HTTPException(status_code=400, detail="Unsafe project path detected")
     return candidate
 
 @router.delete("/project")
-async def delete_project(project_name: str, user_email: Optional[str] = None):
+async def delete_project(
+    project_name: str,
+    user_email: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_guest_session_id: Optional[str] = Header(None, alias="X-Guest-Session-ID")
+):
     """Delete project folder and all files from workspace disk safely."""
-    project_dir = _safe_project_dir(user_email, project_name)
+    user_key = _resolve_effective_identity(authorization, x_guest_session_id, user_email)
+    project_dir = _safe_project_dir(user_key, project_name)
     if project_dir.exists() and project_dir.is_dir():
-        shutil.rmtree(project_dir, ignore_errors=True)
+        # Prevent symlink attacks before removing
+        if project_dir.is_symlink():
+            project_dir.unlink()
+        else:
+            shutil.rmtree(project_dir, ignore_errors=True)
         return {"status": "success", "message": f"Project '{project_name}' deleted"}
     return {"status": "not_found", "message": "Directory not found on disk"}
 
 @router.patch("/project/rename")
-async def rename_project(old_name: str, new_name: str, user_email: Optional[str] = None):
+async def rename_project(
+    old_name: str,
+    new_name: str,
+    user_email: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_guest_session_id: Optional[str] = Header(None, alias="X-Guest-Session-ID")
+):
     """Rename project folder on workspace disk safely."""
-    old_dir = _safe_project_dir(user_email, old_name)
-    new_dir = _safe_project_dir(user_email, new_name)
+    user_key = _resolve_effective_identity(authorization, x_guest_session_id, user_email)
+    old_dir = _safe_project_dir(user_key, old_name)
+    new_dir = _safe_project_dir(user_key, new_name)
     if old_dir.exists() and old_dir.is_dir():
         old_dir.rename(new_dir)
         return {"status": "success", "message": f"Project renamed to '{new_name}'"}

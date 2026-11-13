@@ -17,6 +17,8 @@ venv/
 .env
 .env.local
 .env.*.local
+backend/.env
+test_*.py
 
 # Logs
 npm-debug.log*

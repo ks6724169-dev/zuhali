@@ -25,7 +25,11 @@ function getDynamicEnv(keyName: string): string {
     return process.env[keyName]!.trim();
   }
   try {
-    const envPaths = ['.env', '.env.local'];
+    const envPaths = [
+      path.resolve(__dirname, '.env'),
+      path.resolve(__dirname, '.env.local'),
+      path.resolve(__dirname, 'backend', '.env')
+    ];
     for (const p of envPaths) {
       if (fs.existsSync(p)) {
         const lines = fs.readFileSync(p, 'utf-8').split('\n');
@@ -836,6 +840,14 @@ app.post('/api/v1/chat/stream', chatLimiter, async (req: Request, res: Response)
     clientClosed = true;
     streamAbortController.abort();
   });
+  req.on('error', () => {
+    clientClosed = true;
+    streamAbortController.abort();
+  });
+  res.on('error', () => {
+    clientClosed = true;
+    streamAbortController.abort();
+  });
 
   const {
     message,
@@ -1021,6 +1033,22 @@ explanation: Explanation for the correct answer.
 - WHEN THE USER ASKS FOR ANY 3D IMAGE, 3D MODEL, 3D OBJECT, 3RD IMAGE, OR 360° ROTATING VIEW (e.g. "3D image", "3rd image", "3D DNA", "3D cylinder", "3D cube", "3D sphere", "3D car", "3D solar system", "3D molecule", "3D house", "3D robot", etc.):
   - NEVER generate HTML (\`<!DOCTYPE html>\`, \`<html>\`, \`<head>\`, \`<body>\`, \`<script>\` tags) and NEVER tell the user to copy-paste code into an \`.html\` file! Our app executes Three.js JavaScript code directly and renders the live 3D WebGL model automatically in the chat.
   - ALWAYS write direct Three.js JavaScript code ONLY inside a \`\`\`threejs code block using \`THREE\` and \`OrbitControls\` directly in scope.
+
+LIBRECHAT & CLAUDE ARTIFACTS GUIDELINES:
+- When the user asks to build an interactive web app, calculator, game, dashboard, SVG vector, or when ARTIFACT REQUEST is present, ALWAYS wrap the full self-contained code inside an artifact block:
+:::artifact{identifier="my-app" type="text/html" title="Interactive App Title"}
+\`\`\`\`
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>App</title><style>/* CSS */</style></head>
+<body>
+<!-- Complete self-contained HTML/JS app -->
+<script>// JS logic</script>
+</body>
+</html>
+\`\`\`\`
+:::
+- Supported artifact types: 'text/html' (interactive HTML5/CSS3/JS app), 'application/vnd.react' (React JSX component), 'image/svg+xml' (scalable vector graphic), 'application/vnd.mermaid' (diagrams).
 - Use bold section headers (###), bullet points, and clean structured markdown for text responses.`;
 
     const formattedMessages = [
@@ -1230,8 +1258,15 @@ app.get('/api/v1/chat/project/files', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Valid project_name required' });
   }
 
-  const rawIdentity = auth.authenticated ? auth.email : 'guest_zuhali_ai';
-  const userKey = rawIdentity ? String(rawIdentity).toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest_zuhali_ai';
+  const guestHeader = typeof req.headers['x-guest-session-id'] === 'string'
+    ? req.headers['x-guest-session-id'].trim()
+    : (typeof req.query.guest_session_id === 'string' ? req.query.guest_session_id.trim() : '');
+  const safeGuestId = /^[a-zA-Z0-9_-]{8,64}$/.test(guestHeader) ? `guest_${guestHeader.toLowerCase()}` : 'guest_developer';
+
+  const userKey = auth.authenticated && auth.email
+    ? auth.email.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : safeGuestId;
+
   const targetDir = resolveSafeProjectPath(userKey, project_name);
   if (!targetDir) {
     return res.status(400).json({ error: 'Invalid project path' });
@@ -1290,7 +1325,12 @@ app.delete('/api/v1/chat/project', async (req: Request, res: Response) => {
     return res.status(400).json({ detail: 'Valid project_name is required.' });
   }
 
-  const effectiveEmail = auth.authenticated ? auth.email! : 'guest_developer';
+  const guestHeader = typeof req.headers['x-guest-session-id'] === 'string'
+    ? req.headers['x-guest-session-id'].trim()
+    : (typeof req.query.guest_session_id === 'string' ? req.query.guest_session_id.trim() : '');
+  const safeGuestId = /^[a-zA-Z0-9_-]{8,64}$/.test(guestHeader) ? `guest_${guestHeader.toLowerCase()}` : 'guest_developer';
+
+  const effectiveEmail = auth.authenticated ? auth.email! : safeGuestId;
   const isPyUp = await checkPythonBackendHealth();
   if (isPyUp) {
     try {
@@ -1298,8 +1338,13 @@ app.delete('/api/v1/chat/project', async (req: Request, res: Response) => {
         project_name,
         user_email: effectiveEmail
       });
+      const headers: Record<string, string> = {};
+      if (req.headers.authorization) headers['Authorization'] = req.headers.authorization;
+      if (guestHeader) headers['X-Guest-Session-ID'] = guestHeader;
+
       const pyRes = await fetch(`${getPythonBackendUrl()}/api/v1/chat/project?${q.toString()}`, {
         method: 'DELETE',
+        headers,
         signal: AbortSignal.timeout(10000)
       });
       if (pyRes.ok) {
@@ -1309,7 +1354,10 @@ app.delete('/api/v1/chat/project', async (req: Request, res: Response) => {
     } catch (e) {}
   }
 
-  const userKey = effectiveEmail.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const userKey = auth.authenticated && auth.email
+    ? auth.email.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : safeGuestId;
+
   const safePath = resolveSafeProjectPath(userKey, project_name);
   if (safePath) {
     await fs.promises.rm(safePath, { recursive: true, force: true }).catch(() => {});
@@ -1329,7 +1377,12 @@ app.patch('/api/v1/chat/project/rename', async (req: Request, res: Response) => 
     return res.status(400).json({ detail: 'Valid old_name and new_name are required.' });
   }
 
-  const effectiveEmail = auth.authenticated ? auth.email! : 'guest_developer';
+  const guestHeader = typeof req.headers['x-guest-session-id'] === 'string'
+    ? req.headers['x-guest-session-id'].trim()
+    : (typeof req.query.guest_session_id === 'string' ? req.query.guest_session_id.trim() : '');
+  const safeGuestId = /^[a-zA-Z0-9_-]{8,64}$/.test(guestHeader) ? `guest_${guestHeader.toLowerCase()}` : 'guest_developer';
+
+  const effectiveEmail = auth.authenticated ? auth.email! : safeGuestId;
   const isPyUp = await checkPythonBackendHealth();
   if (isPyUp) {
     try {
@@ -1338,9 +1391,13 @@ app.patch('/api/v1/chat/project/rename', async (req: Request, res: Response) => 
         new_name,
         user_email: effectiveEmail
       });
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (req.headers.authorization) headers['Authorization'] = req.headers.authorization;
+      if (guestHeader) headers['X-Guest-Session-ID'] = guestHeader;
+
       const pyRes = await fetch(`${getPythonBackendUrl()}/api/v1/chat/project/rename?${q.toString()}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         signal: AbortSignal.timeout(10000)
       });
       if (pyRes.ok) {
@@ -1350,7 +1407,10 @@ app.patch('/api/v1/chat/project/rename', async (req: Request, res: Response) => 
     } catch (e) {}
   }
 
-  const userKey = effectiveEmail.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const userKey = auth.authenticated && auth.email
+    ? auth.email.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : safeGuestId;
+
   const oldPath = resolveSafeProjectPath(userKey, old_name);
   const newPath = resolveSafeProjectPath(userKey, new_name);
   if (oldPath && newPath) {

@@ -3,11 +3,12 @@ import {
   PanelLeft, MoreHorizontal, MoreVertical, Copy, Pencil, Share2, Pin,
   Archive, FolderPlus, Download, Flag, Trash2, GitBranch, Volume2,
   Heart, ThumbsDown, RefreshCw, Folder, Camera, Mic, SlidersHorizontal,
-  ArrowUp, X, Check, Square
+  ArrowUp, X, Check, Square, Box, Layers, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import FormattedMessage from './FormattedMessage';
+import ArtifactsPanel from './ArtifactsPanel';
 import AiSparkIcon from '../common/AiSparkIcon';
 
 export default function ChatWorkspace({
@@ -39,6 +40,9 @@ export default function ChatWorkspace({
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [artifactMode, setArtifactMode] = useState(false);
+  const [artifactSubMode, setArtifactSubMode] = useState('default'); // 'default' | 'shadcnui' | 'custom'
+  const [activeArtifact, setActiveArtifact] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
   const [activeUserMenu, setActiveUserMenu] = useState(null);
@@ -213,7 +217,11 @@ export default function ChatWorkspace({
       try { recognitionRef.current.stop(); } catch {}
       setIsListening(false);
     }
-    sendMessage(draft, attachments, { mode: reasoningMode });
+    let promptToSend = draft;
+    if (artifactMode) {
+      promptToSend = `${draft.trim()}\n\n# Artifacts Mode Directive (${artifactSubMode})\nPlease format the primary deliverable strictly as an interactive LibreChat artifact:\n:::artifact{identifier="interactive-app" type="text/html" title="Interactive Artifact"}\n\`\`\`\`\n<!-- complete self-contained executable content -->\n\`\`\`\`\n:::`;
+    }
+    sendMessage(promptToSend, attachments, { mode: reasoningMode });
     setDraft('');
     setAttachments([]);
     setAttachOpen(false);
@@ -412,9 +420,31 @@ export default function ChatWorkspace({
   };
 
   return (
-    <>
-      {/* TOPBAR */}
-      <header className="topbar">
+    <div
+      className={`workspace-split-view ${activeArtifact ? 'with-artifact-open' : ''}`}
+      style={{
+        display: 'flex',
+        flex: 1,
+        minWidth: 0,
+        height: '100%',
+        width: '100%',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      <div
+        className="workspace-chat-pane"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minWidth: 0,
+          height: '100%',
+          position: 'relative'
+        }}
+      >
+        {/* TOPBAR */}
+        <header className="topbar">
         <div className="header-left">
           <button
             className="icon-button"
@@ -511,7 +541,11 @@ export default function ChatWorkspace({
                         <span className="thinking-text">Thinking.....</span>
                       </div>
                     )}
-                    <FormattedMessage text={message.text} onSelectChoice={(val) => sendMessage(val)} />
+                    <FormattedMessage
+                      text={message.text}
+                      onSelectChoice={(val) => sendMessage(val)}
+                      onOpenArtifact={(art) => setActiveArtifact(art)}
+                    />
                     {!message.isStreaming && message.text && (
                       <div className="response-tools" aria-label="Response actions">
                         <button
@@ -799,6 +833,75 @@ export default function ChatWorkspace({
           </div>
         )}
 
+        {artifactMode && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              background: 'rgba(37, 99, 235, 0.08)',
+              border: '1px solid rgba(37, 99, 235, 0.25)',
+              color: '#2563eb',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              marginBottom: '6px',
+              userSelect: 'none'
+            }}
+          >
+            <Layers size={13} style={{ color: '#2563eb' }} />
+            <span style={{ fontWeight: 600 }}>Artifacts</span>
+            <span style={{
+              fontSize: '10.5px',
+              padding: '1px 5px',
+              borderRadius: '4px',
+              background: 'rgba(37, 99, 235, 0.12)',
+              color: '#1d4ed8',
+              textTransform: 'capitalize'
+            }}>
+              {artifactSubMode}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const modes = ['default', 'shadcnui', 'custom'];
+                const nextIdx = (modes.indexOf(artifactSubMode) + 1) % modes.length;
+                setArtifactSubMode(modes[nextIdx]);
+              }}
+              title="Change Artifact Mode (Default / Shadcn UI / Custom)"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#2563eb',
+                cursor: 'pointer',
+                fontSize: '10.5px',
+                padding: '1px 4px',
+                textDecoration: 'underline'
+              }}
+            >
+              switch
+            </button>
+            <button
+              type="button"
+              onClick={() => setArtifactMode(false)}
+              title="Turn off Artifacts"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
+                marginLeft: '2px'
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         <form className="composer" onSubmit={handleSend}>
           <textarea
             ref={inputRef}
@@ -826,6 +929,39 @@ export default function ChatWorkspace({
               </button>
               {attachOpen && (
                 <div className="attachment-menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachOpen(false);
+                      setArtifactMode((v) => !v);
+                    }}
+                    style={{
+                      background: artifactMode ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                      color: artifactMode ? '#2563eb' : 'inherit',
+                      fontWeight: artifactMode ? 600 : 'normal',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Layers size={18} style={{ color: artifactMode ? '#2563eb' : 'var(--text-secondary, #64748b)' }} />
+                      <span>Artifacts</span>
+                    </div>
+                    {artifactMode && (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        fontWeight: 700
+                      }}>
+                        ON
+                      </span>
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -935,6 +1071,14 @@ export default function ChatWorkspace({
           }
         }}
       />
-    </>
+      </div>
+
+      {activeArtifact && (
+        <ArtifactsPanel
+          artifact={activeArtifact}
+          onClose={() => setActiveArtifact(null)}
+        />
+      )}
+    </div>
   );
 }

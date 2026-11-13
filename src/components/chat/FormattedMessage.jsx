@@ -15,7 +15,9 @@ import {
   GitFork, Box, BarChart2, Play, Pause, RotateCcw, Layers
 } from 'lucide-react';
 import QuizCard from './QuizCard';
+import ArtifactRow from './ArtifactRow';
 import DOMPurify from 'dompurify';
+import { WidgetErrorBoundary } from '../common/ErrorBoundary';
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -623,372 +625,168 @@ function ThreeDCard({ spec }) {
 }
 
 // -------------------------------------------------------------
-// Direct Three.js Code Execution Card (Runs AI's Three.js JS directly)
+// -------------------------------------------------------------
+// Direct Three.js Code Execution Card (Sandboxed Zero-Trust Runner)
 // -------------------------------------------------------------
 function ThreeJSRunnerCard({ code, isStreaming = false }) {
-  const mountRef = useRef(null);
+  const iframeRef = useRef(null);
   const [autoRotate, setAutoRotate] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [renderError, setRenderError] = useState('');
   const [isReady, setIsReady] = useState(false);
 
-  const autoRotateRef = useRef(autoRotate);
-  autoRotateRef.current = autoRotate;
-
-  const wireframeRef = useRef(wireframe);
-  wireframeRef.current = wireframe;
-
-  const runtimeRef = useRef({
-    renderer: null,
-    scene: null,
-    camera: null,
-    controls: null,
-    resumeCallbacks: null
-  });
-
-  // Toggle wireframe across all scene meshes dynamically
+  // Sync autoRotate state to iframe via postMessage
   useEffect(() => {
-    const { scene, renderer, camera } = runtimeRef.current;
-    if (!scene) return;
-    scene.traverse((obj) => {
-      if (obj.isMesh && obj.material) {
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => {
-            if ('wireframe' in m) m.wireframe = wireframe;
-          });
-        } else if ('wireframe' in obj.material) {
-          obj.material.wireframe = wireframe;
-        }
-      }
-    });
-    if (renderer && camera) {
-      try {
-        renderer.render(scene, camera);
-      } catch (e) {}
-    }
-  }, [wireframe]);
-
-  // Toggle pause / auto-rotate dynamically
-  useEffect(() => {
-    const { controls, resumeCallbacks } = runtimeRef.current;
-    if (controls) {
-      controls.autoRotate = autoRotate;
-    }
-    if (autoRotate && typeof resumeCallbacks === 'function') {
-      resumeCallbacks();
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'SET_ROTATE', value: autoRotate }, '*');
     }
   }, [autoRotate]);
 
+  // Sync wireframe state to iframe via postMessage
   useEffect(() => {
-    const container = mountRef.current;
-    if (!container || !code || isStreaming) {
-      setIsReady(false);
-      return;
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'SET_WIREFRAME', value: wireframe }, '*');
     }
+  }, [wireframe]);
 
-    let unmounted = false;
-    const rafIds = new Set();
-    let pausedFrameCbs = [];
-
-    const timer = setTimeout(() => {
-      if (unmounted) return;
-
-      let capturedRenderer = null;
-      let capturedScene = null;
-      let capturedCamera = null;
-      let capturedControls = null;
-      let autoAddedControls = false;
-
-      const width = container.clientWidth || 340;
-      const height = 280;
-
-      try {
-        // Strip ES import/export syntax if AI included any
-        let cleanCode = code
-          .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
-          .replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '')
-          .replace(/\bexport\s+default\s+/g, '')
-          .replace(/\bexport\s+(?=(?:const|let|var|function|class)\b)/g, '')
-          .trim();
-
-        // Check syntax first before initializing WebGL
-        const hasSceneDecl = /\b(?:const|let|var)\s+scene\b/.test(cleanCode);
-        const hasCameraDecl = /\b(?:const|let|var)\s+camera\b/.test(cleanCode);
-        const hasRendererDecl = /\b(?:const|let|var)\s+renderer\b/.test(cleanCode);
-        const hasRenderCall = /\.render\s*\(/.test(cleanCode);
-
-        let prefix = '';
-        if (!hasSceneDecl) {
-          prefix += `const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc); scene.add(new THREE.AmbientLight(0xffffff, 0.8)); const _dl = new THREE.DirectionalLight(0xffffff, 1.2); _dl.position.set(5, 10, 7); scene.add(_dl);\n`;
-        }
-        if (!hasCameraDecl) {
-          prefix += `const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000); camera.position.set(0, 2, 7);\n`;
-        }
-        if (!hasRendererDecl) {
-          prefix += `const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(innerWidth, innerHeight); container.appendChild(renderer.domElement);\n`;
-        }
-
-        let suffix = '';
-        if (!hasRenderCall) {
-          suffix += `\nfunction _autoAnimate() { requestAnimationFrame(_autoAnimate); renderer.render(scene, camera); } _autoAnimate();`;
-        }
-
-        const fullScript = `${prefix}${cleanCode}${suffix}`;
-
-        class WrappedWebGLRenderer extends THREE.WebGLRenderer {
-          constructor(options = {}) {
-            super({ antialias: true, alpha: true, ...options });
-            capturedRenderer = this;
-            const origRender = this.render.bind(this);
-            this.render = (s, c) => {
-              if (s) {
-                capturedScene = s;
-                runtimeRef.current.scene = s;
-              }
-              if (c) {
-                capturedCamera = c;
-                runtimeRef.current.camera = c;
-              }
-              if (wireframeRef.current && s) {
-                s.traverse((obj) => {
-                  if (obj.isMesh && obj.material) {
-                    if (Array.isArray(obj.material)) {
-                      obj.material.forEach((m) => { if ('wireframe' in m) m.wireframe = true; });
-                    } else if ('wireframe' in obj.material) {
-                      obj.material.wireframe = true;
-                    }
-                  }
-                });
-              }
-              return origRender(s, c);
-            };
-          }
-        }
-
-        class WrappedOrbitControls extends OrbitControls {
-          constructor(cam, dom) {
-            super(cam, dom);
-            capturedControls = this;
-            runtimeRef.current.controls = this;
-          }
-        }
-
-        const THREE_ENV = {
-          ...THREE,
-          WebGLRenderer: WrappedWebGLRenderer,
-          OrbitControls: WrappedOrbitControls,
-          SphereBufferGeometry: THREE.SphereGeometry,
-          BoxBufferGeometry: THREE.BoxGeometry,
-          CylinderBufferGeometry: THREE.CylinderGeometry,
-          ConeBufferGeometry: THREE.ConeGeometry,
-          TorusBufferGeometry: THREE.TorusGeometry,
-          PlaneBufferGeometry: THREE.PlaneGeometry
-        };
-
-        const sandboxDocument = {
-          createElement: (tag) => document.createElement(tag),
-          createElementNS: (ns, tag) => document.createElementNS(ns, tag),
-          body: {
-            appendChild: (el) => {
-              container.innerHTML = '';
-              container.appendChild(el);
-              return el;
-            },
-            removeChild: (el) => {
-              if (el && el.parentNode === container) container.removeChild(el);
-            },
-            style: {}
-          },
-          getElementById: () => container,
-          querySelector: () => container,
-          addEventListener: (...args) => container.addEventListener(...args),
-          removeEventListener: (...args) => container.removeEventListener(...args)
-        };
-
-        const resizeHandlers = [];
-        const sandboxWindow = {
-          innerWidth: width,
-          innerHeight: height,
-          devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-          addEventListener: (ev, cb) => {
-            if (ev === 'resize' && typeof cb === 'function') resizeHandlers.push(cb);
-          },
-          removeEventListener: () => {}
-        };
-
-        const sandboxRAF = (cb) => {
-          const id = window.requestAnimationFrame((ts) => {
-            rafIds.delete(id);
-            if (unmounted) return;
-            if (!autoRotateRef.current) {
-              pausedFrameCbs.push(cb);
-              return;
-            }
-            if (autoAddedControls && capturedControls) {
-              capturedControls.update();
-            }
-            try {
-              cb(ts);
-            } catch (e) {}
-          });
-          rafIds.add(id);
-          return id;
-        };
-
-        const sandboxCancelRAF = (id) => {
-          rafIds.delete(id);
-          window.cancelAnimationFrame(id);
-        };
-
-        runtimeRef.current.resumeCallbacks = () => {
-          const pending = [...pausedFrameCbs];
-          pausedFrameCbs = [];
-          pending.forEach((cb) => sandboxRAF(cb));
-        };
-
-        const dangerousPattern = /\b(localStorage|sessionStorage|document\.cookie|cookie|indexedDB|XMLHttpRequest|WebSocket|sendBeacon|eval|Function|importScripts|constructor|__proto__|prototype|navigator|location|parent|top|opener|frames)\b|window\s*\[|document\s*\[|\bimport\s*\(/;
-        if (dangerousPattern.test(fullScript)) {
-          throw new Error('Blocked unsafe API access inside 3D script');
-        }
-
-        const frozenWindow = Object.freeze(Object.assign(Object.create(null), sandboxWindow));
-        const frozenDocument = Object.freeze(Object.assign(Object.create(null), sandboxDocument));
-
-        const compiledFn = new Function(
-          'THREE',
-          'OrbitControls',
-          'container',
-          'width',
-          'height',
-          'innerWidth',
-          'innerHeight',
-          'window',
-          'document',
-          'requestAnimationFrame',
-          'cancelAnimationFrame',
-          'localStorage',
-          'sessionStorage',
-          'fetch',
-          'XMLHttpRequest',
-          'WebSocket',
-          'globalThis',
-          'self',
-          'top',
-          'parent',
-          'opener',
-          'frames',
-          'navigator',
-          'location',
-          'eval',
-          'Function',
-          fullScript
-        );
-
-        container.innerHTML = '';
-        compiledFn(
-          THREE_ENV,
-          WrappedOrbitControls,
-          container,
-          width,
-          height,
-          width,
-          height,
-          frozenWindow,
-          frozenDocument,
-          sandboxRAF,
-          sandboxCancelRAF,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined
-        );
-
-        if (capturedRenderer) {
-          runtimeRef.current.renderer = capturedRenderer;
-          if (!container.contains(capturedRenderer.domElement)) {
-            container.innerHTML = '';
-            container.appendChild(capturedRenderer.domElement);
-          }
-          capturedRenderer.setSize(width, height);
-          capturedRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-          capturedRenderer.domElement.style.display = 'block';
-          capturedRenderer.domElement.style.width = '100%';
-          capturedRenderer.domElement.style.height = '100%';
-
-          if (capturedCamera && !capturedControls) {
-            capturedControls = new WrappedOrbitControls(capturedCamera, capturedRenderer.domElement);
-            capturedControls.enableDamping = true;
-            capturedControls.autoRotate = autoRotateRef.current;
-            capturedControls.autoRotateSpeed = 2.0;
-            autoAddedControls = true;
-          } else if (capturedControls) {
-            capturedControls.autoRotate = autoRotateRef.current;
-          }
-        }
-
-        const resizeObserver = new ResizeObserver((entries) => {
-          if (unmounted || !capturedRenderer || !capturedCamera) return;
-          for (const entry of entries) {
-            const w = Math.max(200, Math.floor(entry.contentRect.width));
-            const h = height;
-            sandboxWindow.innerWidth = w;
-            sandboxWindow.innerHeight = h;
-            if ('aspect' in capturedCamera) {
-              capturedCamera.aspect = w / h;
-              capturedCamera.updateProjectionMatrix();
-            }
-            capturedRenderer.setSize(w, h);
-          }
-        });
-        resizeObserver.observe(container);
-        runtimeRef.current._resizeObserver = resizeObserver;
-
-        setRenderError('');
+  // Listen to events from the sandboxed iframe
+  useEffect(() => {
+    const handleMessage = (ev) => {
+      if (!ev.data) return;
+      if (ev.data.type === '3D_READY') {
         setIsReady(true);
-      } catch (err) {
-        setRenderError(err?.message || '3D Scene execution error');
+        setRenderError('');
+      } else if (ev.data.type === '3D_ERROR') {
+        setRenderError(ev.data.message || '3D execution error');
         setIsReady(false);
       }
-    }, 150);
+    };
 
-    return () => {
-      clearTimeout(timer);
-      unmounted = true;
-      rafIds.forEach((id) => window.cancelAnimationFrame(id));
-      rafIds.clear();
-      if (runtimeRef.current._resizeObserver) {
-        runtimeRef.current._resizeObserver.disconnect();
-      }
-      if (runtimeRef.current.controls && typeof runtimeRef.current.controls.dispose === 'function') {
-        runtimeRef.current.controls.dispose();
-      }
-      if (runtimeRef.current.scene) {
-        runtimeRef.current.scene.traverse((obj) => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
-            else obj.material.dispose();
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const srcDoc = useMemo(() => {
+    if (!code || isStreaming) return '';
+
+    // Strip ES import/export syntax if AI included any
+    let cleanCode = code
+      .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
+      .replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '')
+      .replace(/\bexport\s+default\s+/g, '')
+      .replace(/\bexport\s+(?=(?:const|let|var|function|class)\b)/g, '')
+      .trim();
+
+    const hasSceneDecl = /\b(?:const|let|var)\s+scene\b/.test(cleanCode);
+    const hasCameraDecl = /\b(?:const|let|var)\s+camera\b/.test(cleanCode);
+    const hasRendererDecl = /\b(?:const|let|var)\s+renderer\b/.test(cleanCode);
+    const hasRenderCall = /\.render\s*\(/.test(cleanCode);
+
+    let prefix = '';
+    if (!hasSceneDecl) {
+      prefix += `const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc); scene.add(new THREE.AmbientLight(0xffffff, 0.85)); const _dl = new THREE.DirectionalLight(0xffffff, 1.2); _dl.position.set(5, 10, 7); scene.add(_dl);\n`;
+    }
+    if (!hasCameraDecl) {
+      prefix += `const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000); camera.position.set(0, 2, 7);\n`;
+    }
+    if (!hasRendererDecl) {
+      prefix += `const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); container.appendChild(renderer.domElement);\n`;
+    }
+
+    let suffix = '';
+    if (!hasRenderCall) {
+      suffix += `\nfunction _autoAnimate() { requestAnimationFrame(_autoAnimate); if (controls) controls.update(); renderer.render(scene, camera); } _autoAnimate();`;
+    }
+
+    // Escape closing script tags to avoid breaking HTML parser
+    const safeScript = `${prefix}${cleanCode}${suffix}`.replace(/<\/script>/gi, '<\\/script>');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob: https:; font-src data: https:;">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f8fafc; cursor: grab; }
+    html:active, body:active { cursor: grabbing; }
+    #container { width: 100%; height: 100%; position: absolute; inset: 0; }
+    canvas { display: block; width: 100% !important; height: 100% !important; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+<div id="container"></div>
+<script>
+window.onerror = function(msg) {
+  try { window.parent.postMessage({ type: '3D_ERROR', message: String(msg) }, '*'); } catch(e){}
+};
+window.addEventListener('unhandledrejection', function(ev) {
+  try { window.parent.postMessage({ type: '3D_ERROR', message: String(ev.reason) }, '*'); } catch(e){}
+});
+
+(function() {
+  var container = document.getElementById('container');
+  var width = window.innerWidth || 340;
+  var height = window.innerHeight || 280;
+  var controls = null;
+
+  window.addEventListener('message', function(ev) {
+    if (!ev.data) return;
+    if (ev.data.type === 'SET_ROTATE') {
+      if (controls) controls.autoRotate = !!ev.data.value;
+    } else if (ev.data.type === 'SET_WIREFRAME') {
+      var isWire = !!ev.data.value;
+      if (typeof scene !== 'undefined' && scene) {
+        scene.traverse(function(obj) {
+          if (obj.isMesh && obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(function(m) { if ('wireframe' in m) m.wireframe = isWire; });
+            } else if ('wireframe' in obj.material) {
+              obj.material.wireframe = isWire;
+            }
           }
         });
       }
-      if (runtimeRef.current.renderer) {
-        runtimeRef.current.renderer.dispose();
+    }
+  });
+
+  try {
+    ${safeScript}
+
+    // Auto-attach OrbitControls if camera and renderer are declared but controls not yet created
+    if (typeof camera !== 'undefined' && typeof renderer !== 'undefined' && renderer && renderer.domElement) {
+      if (typeof THREE.OrbitControls !== 'undefined' && !controls) {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = ${autoRotate ? 'true' : 'false'};
+        controls.autoRotateSpeed = 2.0;
       }
-      runtimeRef.current = { renderer: null, scene: null, camera: null, controls: null, resumeCallbacks: null };
-      if (container) container.innerHTML = '';
-    };
-  }, [code, isStreaming]);
+    }
+
+    // Handle iframe resize
+    window.addEventListener('resize', function() {
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      if (typeof camera !== 'undefined' && camera && 'aspect' in camera) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      if (typeof renderer !== 'undefined' && renderer) {
+        renderer.setSize(w, h);
+      }
+    });
+
+    try { window.parent.postMessage({ type: '3D_READY' }, '*'); } catch(e){}
+  } catch(err) {
+    try { window.parent.postMessage({ type: '3D_ERROR', message: err.message }, '*'); } catch(e){}
+  }
+})();
+</script>
+</body>
+</html>`;
+  }, [code, isStreaming, autoRotate]);
 
   return (
     <div className="chatgpt-diagram-card three-d-card">
@@ -1019,11 +817,21 @@ function ThreeJSRunnerCard({ code, isStreaming = false }) {
       </div>
 
       <div style={{ position: 'relative', width: '100%', height: '280px', background: '#f8fafc' }}>
-        <div
-          ref={mountRef}
-          className="chatgpt-diagram-viewport three-viewport"
-          style={{ width: '100%', height: '280px', padding: 0, cursor: 'grab' }}
-        />
+        {srcDoc && !isStreaming ? (
+          <iframe
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            title="3D Three.js Sandboxed Runner"
+            sandbox="allow-scripts"
+            style={{
+              width: '100%',
+              height: '280px',
+              border: 0,
+              display: 'block',
+              background: '#f8fafc'
+            }}
+          />
+        ) : null}
 
         {(isStreaming || (!isReady && !renderError)) && (
           <div
@@ -1037,7 +845,8 @@ function ThreeJSRunnerCard({ code, isStreaming = false }) {
               gap: '8px',
               background: '#f8fafc',
               color: '#475569',
-              fontSize: '13px'
+              fontSize: '13px',
+              pointerEvents: 'none'
             }}
           >
             <Loader2 size={22} className="animate-spin" style={{ color: '#2563eb' }} />
@@ -1401,7 +1210,7 @@ function CodeBlock({ language, code, isStreaming = false }) {
 // -------------------------------------------------------------
 // FormattedMessage Main Component
 // -------------------------------------------------------------
-export default function FormattedMessage({ text, onSelectChoice }) {
+export default function FormattedMessage({ text, onSelectChoice, onOpenArtifact }) {
   const renderedContent = useMemo(() => {
     if (!text) return null;
     try {
@@ -1410,6 +1219,41 @@ export default function FormattedMessage({ text, onSelectChoice }) {
       // Cleanly strip any legacy media tokens (:::videos, :::images)
       processed = processed.replace(/:::videos\s*([\s\S]*?):::/gi, '');
       processed = processed.replace(/:::images\s*([\s\S]*?):::/gi, '');
+
+      // 0. Extract LibreChat / Claude Artifacts (:::artifact{...} ... :::)
+      // Supports standard complete :::artifact{...} ... ::: as well as streaming/unclosed artifacts
+      const artifactPlaceholders = [];
+      const artifactRegex = /:::artifact\{([^}]+)\}[\r\n]+([\s\S]*?)(?::::|$)/g;
+      processed = processed.replace(artifactRegex, (match, attrStr, body) => {
+        let identifier = 'artifact';
+        let type = 'text/html';
+        let title = 'Interactive Artifact';
+
+        const idMatch = attrStr.match(/identifier=["']([^"']+)["']/i);
+        if (idMatch) identifier = idMatch[1];
+
+        const typeMatch = attrStr.match(/type=["']([^"']+)["']/i);
+        if (typeMatch) type = typeMatch[1];
+
+        const titleMatch = attrStr.match(/title=["']([^"']+)["']/i);
+        if (titleMatch) title = titleMatch[1];
+
+        let cleanContent = body.trim();
+        // Remove outer code fence (``` or ```` or ````html etc.)
+        cleanContent = cleanContent.replace(/^`{3,5}[a-zA-Z0-9_-]*\r?\n/, '').replace(/\r?\n`{3,5}$/, '').trim();
+
+        const key = `CHATGPTARTIFACTPH${artifactPlaceholders.length}XYZ`;
+        const artifactData = {
+          id: `art_${identifier}_${type}_${title}`.replace(/\s+/g, '_').toLowerCase(),
+          identifier,
+          type,
+          title,
+          content: cleanContent
+        };
+
+        artifactPlaceholders.push({ key, artifactData });
+        return key;
+      });
 
       const choicePlaceholders = [];
       const quizPlaceholders = [];
@@ -1603,33 +1447,53 @@ export default function FormattedMessage({ text, onSelectChoice }) {
       let rawHtml = marked.parse(processed);
 
       // Clean paragraph wrappers around widget placeholders
-      rawHtml = rawHtml.replace(/<p>\s*(KATEXCODEPH\d+XYZ|CHATGPTCHOICEPH\d+XYZ|CHATGPTQUIZPH\d+XYZ)\s*<\/p>/g, '$1');
+      rawHtml = rawHtml.replace(/<p>\s*(KATEXCODEPH\d+XYZ|CHATGPTCHOICEPH\d+XYZ|CHATGPTQUIZPH\d+XYZ|CHATGPTARTIFACTPH\d+XYZ)\s*<\/p>/g, '$1');
 
       // 5. Replace Math Placeholders back with KaTeX rendered HTML
       mathPlaceholders.forEach(({ key, html }) => {
         rawHtml = rawHtml.replace(key, `<span class="katex-rendered-wrapper">${html}</span>`);
       });
 
-      // 6. Assemble Final React Components combining Markdown, Code/Diagrams, Choice & Quiz Cards
+      // 6. Assemble Final React Components combining Markdown, Code/Diagrams, Choice, Quiz & Artifacts (Crash-Proofed with WidgetErrorBoundary)
       const allWidgets = [
+        ...artifactPlaceholders.map((art) => ({
+          key: art.key,
+          render: () => (
+            <WidgetErrorBoundary key={art.key} fallbackText="Interactive Artifact">
+              <ArtifactRow
+                artifact={art.artifactData}
+                onOpen={() => onOpenArtifact && onOpenArtifact(art.artifactData)}
+              />
+            </WidgetErrorBoundary>
+          )
+        })),
         ...codePlaceholders.map((c, idx) => ({
           key: c.key,
           render: () => (
-            <CodeBlock
-              key={c.key}
-              language={c.language}
-              code={c.code}
-              isStreaming={wasUnclosedCodeBlock && idx === codePlaceholders.length - 1}
-            />
+            <WidgetErrorBoundary key={c.key} fallbackText={`Code Block (${c.language || 'code'})`}>
+              <CodeBlock
+                language={c.language}
+                code={c.code}
+                isStreaming={wasUnclosedCodeBlock && idx === codePlaceholders.length - 1}
+              />
+            </WidgetErrorBoundary>
           )
         })),
         ...choicePlaceholders.map((ch) => ({
           key: ch.key,
-          render: () => <ChoiceCard key={ch.key} data={ch.data} onSelectChoice={onSelectChoice} />
+          render: () => (
+            <WidgetErrorBoundary key={ch.key} fallbackText="Interactive Choices">
+              <ChoiceCard data={ch.data} onSelectChoice={onSelectChoice} />
+            </WidgetErrorBoundary>
+          )
         })),
         ...quizPlaceholders.map((q) => ({
           key: q.key,
-          render: () => <QuizCard key={q.key} quizData={q.quizData} />
+          render: () => (
+            <WidgetErrorBoundary key={q.key} fallbackText="Interactive Quiz Card">
+              <QuizCard quizData={q.quizData} />
+            </WidgetErrorBoundary>
+          )
         }))
       ];
 
@@ -1691,7 +1555,7 @@ export default function FormattedMessage({ text, onSelectChoice }) {
     } catch (err) {
       return <p style={{ whiteSpace: 'pre-line' }}>{text}</p>;
     }
-  }, [text, onSelectChoice]);
+  }, [text, onSelectChoice, onOpenArtifact]);
 
   return renderedContent;
 }

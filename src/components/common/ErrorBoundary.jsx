@@ -72,3 +72,37 @@ export default class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+export class WidgetErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.warn('[Widget Error Boundary]:', error?.message || error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: '8px',
+          background: '#f8fafc',
+          border: '1px dashed #cbd5e1',
+          color: '#64748b',
+          fontSize: '12px',
+          margin: '6px 0'
+        }}>
+          ℹ️ {this.props.fallbackText || 'Widget preview unavailable'}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}

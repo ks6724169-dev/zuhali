@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status
-from datetime import datetime, timedelta
+import asyncio
 import uuid
+from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.auth import (
     SendOtpRequest,
@@ -41,11 +42,11 @@ async def send_otp_endpoint(req: SendOtpRequest):
     recipient = req.recipient.strip()
 
     if req.channel == "sms" or ("@" not in recipient and recipient.replace("+", "").isdigit()):
-        ok, msg = send_sms_otp(recipient, otp)
+        ok, msg = await asyncio.to_thread(send_sms_otp, recipient, otp)
         channel_used = "SMS"
     else:
         display_email, canonical_email = normalize_email(recipient)
-        ok, msg = send_email_otp(display_email, otp, req.purpose)
+        ok, msg = await asyncio.to_thread(send_email_otp, display_email, otp, req.purpose)
         if ok:
             store_otp(canonical_email, otp)
             store_otp(display_email, otp)
@@ -75,7 +76,7 @@ async def signup_endpoint(req: SignupRequest):
     display_email, canonical_email = normalize_email(req.email)
     
     # 1. Check if already registered in Supabase PostgreSQL or memory
-    db_user = get_user_by_canonical(canonical_email)
+    db_user = await asyncio.to_thread(get_user_by_canonical, canonical_email)
     mem_user = _USERS_DB.get(canonical_email)
     
     is_verified = (db_user and db_user.get("is_verified")) or (mem_user and mem_user.get("verified"))
@@ -90,7 +91,7 @@ async def signup_endpoint(req: SignupRequest):
     user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, canonical_email))
 
     # 2. Store pending user in Supabase & memory
-    save_pending_user(user_uuid, display_email, canonical_email, req.name, password_hash)
+    await asyncio.to_thread(save_pending_user, user_uuid, display_email, canonical_email, req.name, password_hash)
     _USERS_DB[canonical_email] = {
         "name": req.name,
         "email": display_email,
@@ -101,7 +102,7 @@ async def signup_endpoint(req: SignupRequest):
 
     # 3. Dispatch real 6-digit OTP via Gmail SMTP SSL port 465
     otp = generate_otp()
-    ok, msg = send_email_otp(display_email, otp, "account registration")
+    ok, msg = await asyncio.to_thread(send_email_otp, display_email, otp, "account registration")
     
     if ok:
         store_otp(canonical_email, otp)
@@ -148,7 +149,7 @@ async def verify_otp_endpoint(req: VerifyOtpRequest):
         user["verified"] = True
 
     # Mark user verified in Supabase PostgreSQL
-    mark_user_verified(canonical_email)
+    await asyncio.to_thread(mark_user_verified, canonical_email)
 
     # Issue access token
     access_token = create_access_token(subject=canonical_email)
@@ -179,7 +180,7 @@ async def login_endpoint(req: LoginRequest):
     # Check in memory, then Supabase
     user = _USERS_DB.get(canonical_email)
     if not user:
-        db_user = get_user_by_canonical(canonical_email)
+        db_user = await asyncio.to_thread(get_user_by_canonical, canonical_email)
         if db_user:
             user = {
                 "name": db_user.get("full_name") or display_email.split("@")[0],
@@ -201,7 +202,7 @@ async def login_endpoint(req: LoginRequest):
     # 3. OTP verification check: If not verified yet, block and send OTP
     if not user.get("verified", False):
         otp = generate_otp()
-        send_email_otp(display_email, otp, "account verification")
+        await asyncio.to_thread(send_email_otp, display_email, otp, "account verification")
         store_otp(canonical_email, otp)
         store_otp(display_email, otp)
         raise HTTPException(
@@ -229,11 +230,11 @@ async def forgot_password_endpoint(req: ForgotPasswordRequest):
     Dispatch password recovery OTP to registered users only.
     """
     display_email, canonical_email = normalize_email(req.email)
-    user = _USERS_DB.get(canonical_email) or get_user_by_canonical(canonical_email)
+    user = _USERS_DB.get(canonical_email) or await asyncio.to_thread(get_user_by_canonical, canonical_email)
     
     if user:
         otp = generate_otp()
-        ok, _msg = send_email_otp(display_email, otp, "password reset")
+        ok, _msg = await asyncio.to_thread(send_email_otp, display_email, otp, "password reset")
         if ok:
             store_otp(canonical_email, otp)
             store_otp(display_email, otp)
@@ -266,7 +267,7 @@ async def reset_password_endpoint(req: ResetPasswordRequest):
     if canonical_email in _USERS_DB:
         _USERS_DB[canonical_email]["hashed_password"] = new_hash
         
-    update_user_password(canonical_email, new_hash)
+    await asyncio.to_thread(update_user_password, canonical_email, new_hash)
 
     return {
         "status": "success",
