@@ -4,6 +4,16 @@ import { notifyAICompletion } from '../services/notificationService';
 
 const ChatContext = createContext();
 
+function safeJsonParse(raw, fallback) {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function ChatProvider({ children }) {
   const { user } = useAuth();
   const userKey = user?.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'guest';
@@ -69,24 +79,69 @@ export function ChatProvider({ children }) {
     }
   }, [userKey]);
 
+  // Helper to safely store data in localStorage without throwing QuotaExceededError
+  const safeSetItem = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (err) {
+      console.warn(`[LocalStorage Quota Protection]: Storage full for "${key}". Cleaning up old cache...`);
+      try {
+        // Clean up legacy keys or other users' cached messages if storage is full
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k !== key && (k.startsWith('zuhali_messages_map_') || k.startsWith('zuhali_conversations_'))) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem(key, value);
+      } catch (e2) {
+        console.warn('[LocalStorage Quota Limit Reached]: Ignored exception gracefully.');
+      }
+    }
+  };
+
   // Persist conversations for this specific user
   useEffect(() => {
     if (userKey) {
-      localStorage.setItem(`zuhali_conversations_${userKey}`, JSON.stringify(conversations));
+      safeSetItem(`zuhali_conversations_${userKey}`, JSON.stringify(conversations));
     }
   }, [conversations, userKey]);
 
-  // Persist messages for this specific user
+  // Persist messages for this specific user safely without quota errors
   useEffect(() => {
-    if (userKey) {
-      localStorage.setItem(`zuhali_messages_map_${userKey}`, JSON.stringify(messagesMap));
+    if (userKey && messagesMap) {
+      try {
+        const lightweightMap = {};
+        Object.keys(messagesMap).forEach((convId) => {
+          if (Array.isArray(messagesMap[convId])) {
+            lightweightMap[convId] = messagesMap[convId].slice(-30).map((msg) => {
+              const copy = { ...msg };
+              if (copy.attachmentData && copy.attachmentData.length > 500) {
+                copy.attachmentData = null;
+              }
+              if (Array.isArray(copy.attachments)) {
+                copy.attachments = copy.attachments.map((att) => ({
+                  name: att.name,
+                  type: att.type,
+                  dataUrl: att.dataUrl && att.dataUrl.length < 500 ? att.dataUrl : null,
+                  textContent: att.textContent ? att.textContent.slice(0, 300) : null
+                }));
+              }
+              return copy;
+            });
+          }
+        });
+        safeSetItem(`zuhali_messages_map_${userKey}`, JSON.stringify(lightweightMap));
+      } catch (err) {
+        console.warn('[Storage Serialization Error]:', err);
+      }
     }
   }, [messagesMap, userKey]);
 
   // Persist active conversation id for this specific user
   useEffect(() => {
     if (userKey && activeConvId) {
-      localStorage.setItem(`zuhali_active_conv_${userKey}`, activeConvId);
+      safeSetItem(`zuhali_active_conv_${userKey}`, activeConvId);
     }
   }, [activeConvId, userKey]);
 
@@ -155,12 +210,17 @@ export function ChatProvider({ children }) {
   };
 
   // Send message using Server-Sent Events (SSE) Streaming
-  const sendMessage = async (text, attachment = null, options = {}) => {
-    if (!text.trim() && !attachment) return;
+  const sendMessage = async (text, attachmentInput = null, options = {}) => {
+    const rawAttachments = Array.isArray(attachmentInput) 
+      ? attachmentInput.slice(0, 10) 
+      : (attachmentInput ? [attachmentInput] : []);
+
+    if (!text.trim() && rawAttachments.length === 0) return;
 
     let targetConvId = activeConvId;
     const exists = conversations.some((c) => c.id === targetConvId);
-    const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (attachment?.name || 'New chat');
+    const firstAttName = rawAttachments[0]?.name;
+    const autoTitle = text.trim() ? (text.trim().slice(0, 30) + (text.length > 30 ? '...' : '')) : (firstAttName || 'New chat');
 
     // If this conversation is not yet in the recent chats list, add it!
     if (!exists) {
@@ -185,24 +245,25 @@ export function ChatProvider({ children }) {
       }));
     historyPayload.push({
       role: 'user',
-      content: text.trim()
+      content: text.trim() || (rawAttachments.length > 0 ? `Analysis of ${rawAttachments.length} attached file(s)` : '')
     });
 
     const userMessageId = Date.now();
-    const attachmentPayload = attachment ? {
-      name: attachment.name,
-      type: attachment.type,
-      dataUrl: attachment.dataUrl || null,
-      textContent: attachment.textContent || null
-    } : null;
+    const attachmentsPayload = rawAttachments.map((att) => ({
+      name: att.name,
+      type: att.type,
+      dataUrl: att.dataUrl || att.preview || null,
+      textContent: att.textContent || null
+    }));
 
     const userMessage = {
       id: userMessageId,
       assistant: false,
       text: text.trim(),
-      attachment: attachment ? attachment.name : null,
-      attachmentType: attachment ? attachment.type : null,
-      attachmentData: attachment ? (attachment.dataUrl || null) : null,
+      attachments: attachmentsPayload,
+      attachment: rawAttachments[0] ? rawAttachments[0].name : null,
+      attachmentType: rawAttachments[0] ? rawAttachments[0].type : null,
+      attachmentData: rawAttachments[0] ? (rawAttachments[0].dataUrl || rawAttachments[0].preview || null) : null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -234,7 +295,8 @@ export function ChatProvider({ children }) {
         body: JSON.stringify({
           message: text.trim(),
           messages: historyPayload,
-          attachment: attachmentPayload,
+          attachments: attachmentsPayload,
+          attachment: attachmentsPayload[0] || null,
           conversation_id: targetConvId,
           model: options?.mode || 'medium',
           mode: options?.mode || 'medium',
@@ -284,7 +346,7 @@ export function ChatProvider({ children }) {
       }
     } catch (err) {
       console.warn('[SSE Stream Fallback]:', err.message);
-      const fallbackReply = `I am Rhynia G1. I processed your request: "${text || attachment?.name}".`;
+      const fallbackReply = `I am Rhynia G1. I processed your request: "${text || rawAttachments[0]?.name || 'attachment'}".`;
       let currentText = '';
       for (const word of fallbackReply.split(' ')) {
         await new Promise((r) => setTimeout(r, 30));
@@ -374,6 +436,10 @@ export function ChatProvider({ children }) {
           model: 'zuhali-pro-v1'
         })
       });
+
+      if (!response.ok || !response.body) {
+        throw new Error('Regenerate stream failed');
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');

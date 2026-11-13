@@ -10,6 +10,7 @@ class ChatStreamRequest(BaseModel):
     message: Optional[str] = ""
     messages: Optional[List[Dict[str, Any]]] = None
     attachment: Optional[Dict[str, Any]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
     model: Optional[str] = "medium"
     mode: Optional[str] = None
     system_prompt: Optional[str] = None

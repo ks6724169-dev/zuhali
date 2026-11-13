@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from app.schemas.chat import ChatStreamRequest, MessageFeedbackRequest
 from app.services.ai_stream import generate_ai_stream
+from app.core.security import decode_access_token
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -16,7 +17,7 @@ async def chat_stream(req: ChatStreamRequest):
     """
     prompt = req.message or ""
     selected_mode = (req.mode or req.model or "medium").lower()
-    generator = generate_ai_stream(prompt, selected_mode, req.messages, req.attachment)
+    generator = generate_ai_stream(prompt, selected_mode, req.messages, req.attachment, req.attachments)
 
     return StreamingResponse(
         generator,
@@ -70,10 +71,18 @@ async def submit_feedback(req: MessageFeedbackRequest):
     }
 
 @router.get("/feedback")
-async def list_feedback(limit: int = 50):
+async def list_feedback(limit: int = 50, authorization: str = Header(default="")):
     """
-    Retrieve stored user feedback from Supabase PostgreSQL for auditing and evaluation.
+    Retrieve stored user feedback for the authenticated user only.
     """
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    payload = decode_access_token(authorization.split(" ", 1)[1].strip())
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    auth_email = payload["sub"]
+    safe_limit = max(1, min(limit, 100))
+
     conn = get_db_connection()
     feedbacks = []
     if conn:
@@ -82,9 +91,10 @@ async def list_feedback(limit: int = 50):
                 cur.execute("""
                     SELECT id, message_id, user_email, feedback_type, reason, comment, prompt, message_text, created_at
                     FROM public.message_feedback
+                    WHERE user_email = %s
                     ORDER BY created_at DESC
                     LIMIT %s;
-                """, (limit,))
+                """, (auth_email, safe_limit))
                 feedbacks = cur.fetchall()
                 # Format datetimes
                 for f in feedbacks:
@@ -100,13 +110,23 @@ import re
 from pathlib import Path
 from typing import Optional
 
-WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "workspace" / "projects"
+WORKSPACE_ROOT = (Path(__file__).resolve().parent.parent.parent.parent / "workspace" / "projects").resolve()
+
+def _safe_project_dir(user_email: Optional[str], project_name: str) -> Path:
+    if not project_name or len(project_name) > 80 or ".." in project_name or "/" in project_name or "\\" in project_name:
+        raise HTTPException(status_code=400, detail="Invalid project name")
+    if not re.match(r'^[a-zA-Z0-9._-]+$', project_name):
+        raise HTTPException(status_code=400, detail="Project name contains disallowed characters")
+    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
+    candidate = (WORKSPACE_ROOT / user_key / project_name).resolve()
+    if not candidate.is_relative_to(WORKSPACE_ROOT):
+        raise HTTPException(status_code=400, detail="Unsafe project path")
+    return candidate
 
 @router.delete("/project")
 async def delete_project(project_name: str, user_email: Optional[str] = None):
-    """Delete project folder and all files from workspace disk."""
-    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
-    project_dir = WORKSPACE_ROOT / user_key / project_name
+    """Delete project folder and all files from workspace disk safely."""
+    project_dir = _safe_project_dir(user_email, project_name)
     if project_dir.exists() and project_dir.is_dir():
         shutil.rmtree(project_dir, ignore_errors=True)
         return {"status": "success", "message": f"Project '{project_name}' deleted"}
@@ -114,10 +134,9 @@ async def delete_project(project_name: str, user_email: Optional[str] = None):
 
 @router.patch("/project/rename")
 async def rename_project(old_name: str, new_name: str, user_email: Optional[str] = None):
-    """Rename project folder on workspace disk."""
-    user_key = re.sub(r'[^a-z0-9]', '_', user_email.lower()) if user_email else "guest_developer"
-    old_dir = WORKSPACE_ROOT / user_key / old_name
-    new_dir = WORKSPACE_ROOT / user_key / new_name
+    """Rename project folder on workspace disk safely."""
+    old_dir = _safe_project_dir(user_email, old_name)
+    new_dir = _safe_project_dir(user_email, new_name)
     if old_dir.exists() and old_dir.is_dir():
         old_dir.rename(new_dir)
         return {"status": "success", "message": f"Project renamed to '{new_name}'"}

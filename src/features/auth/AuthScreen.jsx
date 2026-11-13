@@ -81,16 +81,30 @@ export default function AuthScreen() {
   return (
     <section className="auth-screen">
       <div className="auth-layout">
-        {/* Left Branding Panel */}
-        <aside className="auth-brand-panel">
-          <div className="auth-brand-art">
-            <span className="auth-brand-leaf"><i /><i /></span>
-            <div className="auth-brand-name">Zuhali</div>
-            <div className="auth-brand-subtitle">INTELLIGENCE</div>
-          </div>
-          <p>One account. A smarter way to create, learn and build with AI.</p>
-          <div className="auth-brand-footer">
-            <span /> Built for curious minds <span />
+        {/* Top Circle Logo above Card */}
+        <aside className="auth-brand-panel" style={{ minHeight: 'auto', padding: '10px 0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            background: '#000000',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          }}>
+            <img
+              src="/assets/aistudio/file_000000007358820892a5a6f66f1200ca_bacfba44.png"
+              alt="Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              }}
+            />
           </div>
         </aside>
 
@@ -99,11 +113,7 @@ export default function AuthScreen() {
           {/* LOGIN VIEW */}
           {authView === 'login' && (
             <form className="auth-card" onSubmit={handleLoginSubmit}>
-              <div className="auth-eyebrow">WELCOME BACK</div>
-              <h1>Log in to Zuhali</h1>
-              <p className="auth-description">Continue where your ideas left off.</p>
-
-              <label className="auth-field-label" htmlFor="login-email">Email address</label>
+              <label className="auth-field-label" htmlFor="login-email" style={{ marginTop: 0 }}>Email address</label>
               <div className="auth-input-wrap">
                 <Mail size={18} />
                 <input
@@ -213,11 +223,7 @@ export default function AuthScreen() {
           {/* SIGNUP VIEW */}
           {authView === 'signup' && (
             <form className="auth-card" onSubmit={handleSignupSubmit}>
-              <div className="auth-eyebrow">GET STARTED</div>
-              <h1>Create your account</h1>
-              <p className="auth-description">A verification code will be sent to your email to activate your account.</p>
-
-              <label className="auth-field-label" htmlFor="signup-name">Full name</label>
+              <label className="auth-field-label" htmlFor="signup-name" style={{ marginTop: 0 }}>Full name</label>
               <div className="auth-input-wrap">
                 <UserRound size={18} />
                 <input
@@ -321,8 +327,6 @@ export default function AuthScreen() {
                   <ArrowLeft size={17} /> Back to sign up
                 </button>
               </div>
-              <div className="auth-icon-tile"><Mail size={23} /></div>
-              <div className="auth-eyebrow">EMAIL VERIFICATION</div>
               <h1>Check your inbox</h1>
               <p className="auth-description">
                 Enter the 6-digit verification code sent to <strong>{pendingEmail || email || 'your email address'}</strong>.
@@ -376,8 +380,6 @@ export default function AuthScreen() {
                   <ArrowLeft size={17} /> Back to login
                 </button>
               </div>
-              <div className="auth-icon-tile"><Mail size={23} /></div>
-              <div className="auth-eyebrow">ACCOUNT RECOVERY</div>
               <h1>Forgot password?</h1>
               <p className="auth-description">Enter the email linked to your account. We'll send a password reset code.</p>
 

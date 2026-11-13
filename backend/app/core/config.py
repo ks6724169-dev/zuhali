@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -12,7 +13,7 @@ class Settings:
     API_V1_STR: str = "/api/v1"
     
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "zuhali_super_secure_jwt_secret_change_in_production_2026")
+    SECRET_KEY: str = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
     
@@ -20,9 +21,9 @@ class Settings:
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "https://zuhali.onrender.com",
-        "https://zuhali.vercel.app",
-        "*"
+        "https://zuhali.vercel.app"
     ]
     
     # --- Supabase Database, Auth & Storage ---

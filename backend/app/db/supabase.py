@@ -11,6 +11,7 @@ def get_db_connection():
             user="postgres",
             password=settings.SUPABASE_DB_PASSWORD,
             dbname="postgres",
+            sslmode="require",
             connect_timeout=10
         )
         conn.autocommit = True

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  PanelLeft, SquarePen, MoreHorizontal, Copy, Pencil, Share2, Pin,
+  PanelLeft, MoreHorizontal, MoreVertical, Copy, Pencil, Share2, Pin,
   Archive, FolderPlus, Download, Flag, Trash2, GitBranch, Volume2,
   Heart, ThumbsDown, RefreshCw, Folder, Camera, Mic, SlidersHorizontal,
   ArrowUp, X, Check, Square
@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import FormattedMessage from './FormattedMessage';
+import AiSparkIcon from '../common/AiSparkIcon';
 
 export default function ChatWorkspace({
   onToggleSidebar
@@ -36,7 +37,7 @@ export default function ChatWorkspace({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState('');
-  const [attachment, setAttachment] = useState(null);
+  const [attachments, setAttachments] = useState([]);
   const [attachOpen, setAttachOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
@@ -207,16 +208,20 @@ export default function ChatWorkspace({
 
   const handleSend = (e) => {
     e?.preventDefault();
-    if (!draft.trim() && !attachment) return;
+    if (!draft.trim() && attachments.length === 0) return;
     if (isListening && recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       setIsListening(false);
     }
-    sendMessage(draft, attachment, { mode: reasoningMode });
+    sendMessage(draft, attachments, { mode: reasoningMode });
     setDraft('');
-    setAttachment(null);
+    setAttachments([]);
     setAttachOpen(false);
     setModeMenuOpen(false);
+  };
+
+  const removeAttachment = (id) => {
+    setAttachments((prev) => prev.filter((att) => att.id !== id));
   };
 
   const copyConversation = async () => {
@@ -269,35 +274,140 @@ export default function ChatWorkspace({
     inputRef.current?.focus();
   };
 
-  const processSelectedFile = (file) => {
-    if (!file) return;
-    const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
-    const reader = new FileReader();
+  const compressImageFile = (file) => {
+    return new Promise((resolve) => {
+      const isCompressibleImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+      if (!isCompressibleImage || file.type?.includes('svg') || file.type?.includes('gif')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve({
+            dataUrl: reader.result,
+            size: file.size,
+            originalSize: file.size,
+            compressed: false
+          });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
 
-    if (isImage) {
-      reader.onload = () => {
-        setAttachment({
-          name: file.name,
-          type: file.type || 'image/png',
-          size: file.size,
-          dataUrl: reader.result,
-          preview: reader.result,
-          isImage: true
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        // Ultra compression: max dimension 800px (crystal clear for AI vision & UI preview, super tiny footprint)
+        const maxDim = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Try WebP compression at 0.55 quality (ultra high compression)
+        let dataUrl = canvas.toDataURL('image/webp', 0.55);
+        if (!dataUrl.startsWith('data:image/webp')) {
+          dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+        }
+
+        const compressedSizeBytes = Math.round((dataUrl.length * 3) / 4);
+        const percentSaved = Math.max(0, Math.round(((file.size - compressedSizeBytes) / file.size) * 100));
+
+        resolve({
+          dataUrl,
+          size: compressedSizeBytes,
+          originalSize: file.size,
+          percentSaved,
+          compressed: file.size > compressedSizeBytes
         });
       };
-      reader.readAsDataURL(file);
-    } else {
-      reader.onload = () => {
-        setAttachment({
-          name: file.name,
-          type: file.type || 'text/plain',
-          size: file.size,
-          textContent: typeof reader.result === 'string' ? reader.result : '',
-          preview: null,
-          isImage: false
-        });
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve({
+            dataUrl: reader.result,
+            size: file.size,
+            originalSize: file.size,
+            percentSaved: 0,
+            compressed: false
+          });
+        };
+        reader.readAsDataURL(file);
       };
-      reader.readAsText(file);
+      img.src = objectUrl;
+    });
+  };
+
+  const processSelectedFiles = async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    const currentCount = attachments.length;
+    const remainingSlots = 10 - currentCount;
+
+    if (remainingSlots <= 0) {
+      alert('एक बार में अधिकतम 10 अटैचमेंट ही जोड़े जा सकते हैं।');
+      return;
+    }
+
+    const filesArray = Array.from(fileList).slice(0, remainingSlots);
+
+    for (const file of filesArray) {
+      const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
+
+      if (isImage) {
+        const compressedRes = await compressImageFile(file);
+        setAttachments((prev) => {
+          if (prev.length >= 10) return prev;
+          return [
+            ...prev,
+            {
+              id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+              name: file.name,
+              type: file.type || 'image/jpeg',
+              size: compressedRes.size,
+              originalSize: compressedRes.originalSize,
+              compressed: compressedRes.compressed,
+              dataUrl: compressedRes.dataUrl,
+              preview: compressedRes.dataUrl,
+              isImage: true
+            }
+          ];
+        });
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments((prev) => {
+            if (prev.length >= 10) return prev;
+            return [
+              ...prev,
+              {
+                id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                name: file.name,
+                type: file.type || 'text/plain',
+                size: file.size,
+                originalSize: file.size,
+                compressed: false,
+                textContent: typeof reader.result === 'string' ? reader.result : '',
+                preview: null,
+                isImage: false
+              }
+            ];
+          });
+        };
+        reader.readAsText(file);
+      }
     }
   };
 
@@ -314,20 +424,19 @@ export default function ChatWorkspace({
           >
             <PanelLeft size={19} />
           </button>
-          {hasConversation && (
+        </div>
+
+        {hasConversation && (
+          <div className="header-actions">
             <button
               className="icon-button"
               aria-label="New chat"
               title="New chat"
               onClick={startNewChat}
             >
-              <SquarePen size={19} />
+              <AiSparkIcon size={18} />
             </button>
-          )}
-        </div>
 
-        {hasConversation && (
-          <div className="header-actions">
             <div className="menu-anchor">
               <button
                 className="icon-button"
@@ -335,14 +444,10 @@ export default function ChatWorkspace({
                 title="More options"
                 onClick={() => setMenuOpen((v) => !v)}
               >
-                <MoreHorizontal size={20} />
+                <MoreHorizontal size={19} />
               </button>
               {menuOpen && (
                 <div className="dropdown-menu">
-                  <button onClick={copyConversation}>
-                    <Copy size={16} />
-                    {copied ? 'Copied to clipboard' : 'Copy conversation'}
-                  </button>
                   <button
                     onClick={() => {
                       setMenuOpen(false);
@@ -363,10 +468,6 @@ export default function ChatWorkspace({
                   <button onClick={() => { toggleArchiveChat(currentConv.id); setMenuOpen(false); }}>
                     <Archive size={16} />
                     {currentConv.isArchived ? 'Unarchive chat' : 'Archive chat'}
-                  </button>
-                  <button onClick={exportChat}>
-                    <Download size={16} />
-                    Export chat (.txt)
                   </button>
                   <div className="menu-divider" />
                   <button
@@ -404,17 +505,13 @@ export default function ChatWorkspace({
                   <>
 
 
-                    {/* Natural clean thinking indicator while generating before text begins */}
                     {message.isStreaming && !message.text && (
                       <div className="ai-thinking-indicator" aria-label="Thinking">
-                        <span className="thinking-dot" />
-                        <span className="thinking-dot" />
-                        <span className="thinking-dot" />
+                        <span className="spinning-snowflake">❄️</span>
+                        <span className="thinking-text">Thinking.....</span>
                       </div>
                     )}
-
                     <FormattedMessage text={message.text} onSelectChoice={(val) => sendMessage(val)} />
-                    {message.isStreaming && <span className="streaming-cursor">▋</span>}
                     {!message.isStreaming && message.text && (
                       <div className="response-tools" aria-label="Response actions">
                         <button
@@ -485,7 +582,10 @@ export default function ChatWorkspace({
                 ) : (
                   <div className="user-message-wrap">
                     <div
-                      className="user-bubble"
+                      className={!message.text && (
+                        (Array.isArray(message.attachments) && message.attachments.some(a => a.dataUrl?.startsWith('data:image') || a.type?.startsWith('image/'))) ||
+                        (message.attachmentData && (message.attachmentType?.startsWith('image/') || message.attachmentData.startsWith('data:image/')))
+                      ) ? "user-bubble-image-only" : "user-bubble"}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setActiveUserMenu(message.id);
@@ -496,21 +596,62 @@ export default function ChatWorkspace({
                       onTouchEnd={() => clearTimeout(longPressTimer.current)}
                     >
                       {message.text && <p>{message.text}</p>}
-                      {message.attachment && (
-                        message.attachmentData && (message.attachmentType?.startsWith('image/') || message.attachmentData.startsWith('data:image/')) ? (
-                          <div className="attached-image-card" style={{ marginBottom: '8px' }}>
-                            <img
-                              src={message.attachmentData}
-                              alt={message.attachment}
-                              style={{ maxWidth: '260px', maxHeight: '180px', borderRadius: '10px', objectFit: 'cover', display: 'block', border: '1px solid rgba(255,255,255,0.2)' }}
-                            />
-                            <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '4px' }}>{message.attachment}</div>
-                          </div>
-                        ) : (
-                          <div className="attached-file" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'rgba(0,0,0,0.18)', borderRadius: '8px', marginBottom: '6px', fontSize: '12px' }}>
-                            <Folder size={15} />
-                            <span>{message.attachment}</span>
-                          </div>
+                      {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+                        <div className="attached-media-grid" style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '6px',
+                          marginTop: message.text ? '8px' : '0'
+                        }}>
+                          {message.attachments.map((att, idx) => (
+                            att.dataUrl && (att.type?.startsWith('image/') || att.dataUrl.startsWith('data:image/')) ? (
+                              <div key={idx} className="attached-image-card" style={{ border: 'none', background: 'transparent', padding: 0 }}>
+                                <img
+                                  src={att.dataUrl}
+                                  alt=""
+                                  style={{
+                                    maxWidth: message.attachments.length === 1 ? '240px' : '140px',
+                                    maxHeight: message.attachments.length === 1 ? '320px' : '140px',
+                                    borderRadius: '14px',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                    border: 'none',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)'
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div key={idx} className="attached-file" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'rgba(0,0,0,0.18)', borderRadius: '8px', fontSize: '12px' }}>
+                                <Folder size={15} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+                              </div>
+                            )
+                          ))}
+                        </div>
+                      ) : (
+                        message.attachment && (
+                          message.attachmentData && (message.attachmentType?.startsWith('image/') || message.attachmentData.startsWith('data:image/')) ? (
+                            <div className="attached-image-card" style={{ border: 'none', background: 'transparent', padding: 0 }}>
+                              <img
+                                src={message.attachmentData}
+                                alt=""
+                                style={{
+                                  maxWidth: '240px',
+                                  maxHeight: '320px',
+                                  borderRadius: '14px',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                  border: 'none',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)'
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="attached-file" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'rgba(0,0,0,0.18)', borderRadius: '8px', marginBottom: '6px', fontSize: '12px' }}>
+                              <Folder size={15} />
+                              <span>{message.attachment}</span>
+                            </div>
+                          )
                         )
                       )}
                     </div>
@@ -543,34 +684,118 @@ export default function ChatWorkspace({
 
       {/* COMPOSER */}
       <div className="composer-wrap">
-        {attachment && (
-          <div className="attachment-chip" style={{
-            display: 'inline-flex',
+        {attachments.length > 0 && (
+          <div className="composer-attachments-bar" style={{
+            display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            background: 'var(--surface-active, rgba(22, 163, 74, 0.12))',
-            border: '1px solid var(--accent-color, #16a34a)',
-            borderRadius: '10px',
-            marginBottom: '8px',
-            fontSize: '12px'
+            gap: '10px',
+            overflowX: 'auto',
+            padding: '6px 4px 10px',
+            marginBottom: '4px',
+            maxWidth: '100%',
+            scrollbarWidth: 'thin'
           }}>
-            {attachment.isImage && attachment.preview ? (
-              <img src={attachment.preview} alt="preview" style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover' }} />
-            ) : (
-              <Folder size={15} />
+            {attachments.map((att) => (
+              <div
+                key={att.id}
+                className="square-attachment-card"
+                style={{
+                  position: 'relative',
+                  width: '68px',
+                  height: '68px',
+                  borderRadius: '14px',
+                  flexShrink: 0,
+                  background: 'var(--surface-active, #f1f5f9)',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  boxShadow: '0 3px 10px rgba(0,0,0,0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'visible'
+                }}
+              >
+                {att.isImage && att.preview ? (
+                  <>
+                    <img
+                      src={att.preview}
+                      alt="attachment preview"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        borderRadius: '13px',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
+                    {att.compressed && (
+                      <span
+                        title={`Original: ${(att.originalSize / 1024 / 1024).toFixed(2)}MB | Ultra Compressed: ${(att.size / 1024).toFixed(0)}KB (${att.percentSaved || 85}% smaller)`}
+                        style={{
+                          position: 'absolute',
+                          bottom: '3px',
+                          left: '3px',
+                          background: 'rgba(16, 185, 129, 0.92)',
+                          color: '#ffffff',
+                          fontSize: '8px',
+                          fontWeight: 700,
+                          padding: '1.5px 4px',
+                          borderRadius: '5px',
+                          backdropFilter: 'blur(2px)',
+                          lineHeight: 1,
+                          pointerEvents: 'none',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                        }}
+                      >
+                        ⚡{(att.size / 1024).toFixed(0)}K
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', color: '#64748b' }}>
+                    <Folder size={22} />
+                    <span style={{ fontSize: '9px', fontWeight: 600, maxWidth: '58px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {att.name?.split('.').pop()?.toUpperCase() || 'FILE'}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(att.id)}
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    border: '1.5px solid #ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    zIndex: 10,
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                    padding: 0
+                  }}
+                  aria-label="Remove image"
+                >
+                  <X size={12} strokeWidth={2.5} />
+                </button>
+              </div>
+            ))}
+            {attachments.length < 10 && (
+              <div style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--text-secondary, #64748b)',
+                padding: '0 6px',
+                flexShrink: 0
+              }}>
+                ({attachments.length}/10)
+              </div>
             )}
-            <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {attachment.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => setAttachment(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px', display: 'flex' }}
-              aria-label="Remove attachment"
-            >
-              <X size={14} />
-            </button>
           </div>
         )}
 
@@ -668,12 +893,16 @@ export default function ChatWorkspace({
             </button>
 
             <button
-              type="submit"
-              className="send-button"
-              aria-label="Send message"
-              disabled={(!draft.trim() && !attachment) || isGenerating}
+              type={isGenerating ? "button" : "submit"}
+              className={`send-button ${isGenerating ? 'is-generating-square' : ''}`}
+              aria-label={isGenerating ? "AI is generating..." : "Send message"}
+              disabled={!isGenerating && (!draft.trim() && attachments.length === 0)}
             >
-              <ArrowUp size={20} />
+              {isGenerating ? (
+                <Square size={13} fill="currentColor" />
+              ) : (
+                <ArrowUp size={20} />
+              )}
             </button>
           </div>
         </form>
@@ -683,11 +912,12 @@ export default function ChatWorkspace({
       <input
         ref={fileRef}
         type="file"
+        multiple
+        accept="image/*,.pdf,.txt,.js,.jsx,.ts,.tsx,.json,.css,.html"
         style={{ display: 'none' }}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            processSelectedFile(file);
+          if (e.target.files && e.target.files.length > 0) {
+            processSelectedFiles(e.target.files);
             e.target.value = '';
           }
         }}
@@ -699,9 +929,8 @@ export default function ChatWorkspace({
         capture="environment"
         style={{ display: 'none' }}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            processSelectedFile(file);
+          if (e.target.files && e.target.files.length > 0) {
+            processSelectedFiles(e.target.files);
             e.target.value = '';
           }
         }}

@@ -16,7 +16,9 @@ import {
   StorageScreen,
   ProfileScreen,
   BillingScreen,
-  HelpScreen
+  HelpScreen,
+  PrivacyScreen,
+  AboutScreen
 } from './features/settings/SettingsScreens';
 import './styles.css';
 
@@ -25,7 +27,7 @@ function MainAppShell() {
   const { currentAccent } = useTheme();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState(null); // 'settings', 'appearance', 'language', 'notifications', 'storage', 'profile', 'billing', 'help'
+  const [activeScreen, setActiveScreen] = useState(null); // 'settings', 'appearance', 'language', 'notifications', 'privacy', 'storage', 'about', 'profile', 'billing', 'help', 'library'
 
   return (
     <main
@@ -45,8 +47,12 @@ function MainAppShell() {
         <LanguageScreen onBack={() => setActiveScreen('settings')} />
       ) : activeScreen === 'notifications' ? (
         <NotificationsScreen onBack={() => setActiveScreen('settings')} />
+      ) : activeScreen === 'privacy' ? (
+        <PrivacyScreen onBack={() => setActiveScreen('settings')} />
       ) : activeScreen === 'storage' ? (
         <StorageScreen onBack={() => setActiveScreen('settings')} />
+      ) : activeScreen === 'about' ? (
+        <AboutScreen onBack={() => setActiveScreen('settings')} />
       ) : activeScreen === 'profile' ? (
         <ProfileScreen onClose={() => setActiveScreen(null)} />
       ) : activeScreen === 'billing' ? (

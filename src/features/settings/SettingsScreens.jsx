@@ -930,6 +930,115 @@ export function HelpScreen({ onClose }) {
   );
 }
 
+// 9. PRIVACY & DATA SCREEN
+export function PrivacyScreen({ onBack }) {
+  const [cleared, setCleared] = useState(false);
+  const handleClearData = () => {
+    sessionStorage.clear();
+    setCleared(true);
+    setTimeout(() => setCleared(false), 2000);
+  };
+
+  return (
+    <section className="profile-screen settings-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>Privacy &amp; Data</h1>
+      </header>
+      <div className="settings-screen-content">
+        <div className="notifications-group" style={{ marginBottom: 20 }}>
+          <div className="notifications-group-heading">DATA MANAGEMENT</div>
+          <div className="notifications-card">
+            <div className="notification-row">
+              <span className="notification-copy">
+                <strong>Chat History Sync</strong>
+                <small>Secure local and cloud session persistence with end-to-end TLS</small>
+              </span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color, #16a34a)' }}>Active</span>
+            </div>
+            <div className="notification-row">
+              <span className="notification-copy">
+                <strong>Model Training Opt-Out</strong>
+                <small>Your conversations and files are never used to train public models</small>
+              </span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color, #16a34a)' }}>Protected</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={handleClearData}
+            style={{
+              padding: '11px 22px',
+              fontSize: '13px',
+              fontWeight: 600,
+              borderRadius: '11px',
+              border: '1px solid #ef4444',
+              background: 'rgba(239, 68, 68, 0.12)',
+              color: '#ef4444',
+              cursor: 'pointer'
+            }}
+          >
+            {cleared ? '✓ Session Cache Cleared!' : 'Clear Temporary Cache'}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// 10. ABOUT SCREEN
+export function AboutScreen({ onBack }) {
+  return (
+    <section className="profile-screen settings-screen">
+      <header className="profile-screen-header">
+        <button type="button" className="profile-back-button" aria-label="Back to settings" onClick={onBack}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1>About Zuhali</h1>
+      </header>
+      <div className="settings-screen-content">
+        <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            margin: '0 auto 12px',
+            overflow: 'hidden',
+            border: '2px solid rgba(22, 163, 74, 0.35)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.1)'
+          }}>
+            <img
+              src="/assets/aistudio/file_000000007358820892a5a6f66f1200ca_bacfba44.png"
+              alt="Zuhali"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </div>
+          <h2 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 700 }}>Zuhali AI Workspace</h2>
+          <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary, #858d86)' }}>Version 1.0.0 (Production Architecture)</p>
+        </div>
+
+        <div className="settings-option">
+          <span className="settings-option-icon"><Info size={19} /></span>
+          <span><strong>Release Channel</strong><small>Production Stable (Build 2026.11)</small></span>
+        </div>
+        <div className="settings-option">
+          <span className="settings-option-icon"><Shield size={19} /></span>
+          <span><strong>Security &amp; Privacy Policy</strong><small>Protected with AES-256 and TLS 1.3</small></span>
+        </div>
+        <div className="settings-option">
+          <span className="settings-option-icon"><FileText size={19} /></span>
+          <span><strong>Terms of Service</strong><small>Workspace usage and licensing agreement</small></span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MailIcon({ size = 18 }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center' }}>✉️</span>;
 }

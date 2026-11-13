@@ -20,9 +20,11 @@ export function ThemeProvider({ children }) {
 
       document.documentElement.setAttribute('data-theme', effectiveDark ? 'dark' : 'light');
       if (effectiveDark) {
-        document.body.classList.add('dark-mode');
+        document.documentElement.classList.add('dark', 'dark-mode');
+        document.body.classList.add('dark', 'dark-mode');
       } else {
-        document.body.classList.remove('dark-mode');
+        document.documentElement.classList.remove('dark', 'dark-mode');
+        document.body.classList.remove('dark', 'dark-mode');
       }
     };
 

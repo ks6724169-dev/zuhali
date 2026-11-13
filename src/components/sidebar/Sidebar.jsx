@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  SquarePen, Search, MessageSquare, UserRound, Settings,
+  Search, MessageSquare, UserRound, Settings,
   CreditCard, CircleHelp, LogOut, MoreHorizontal, Pin, FolderKanban,
   Pencil, Trash2
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
+import AiSparkIcon from '../common/AiSparkIcon';
 
 export default function Sidebar({
   isOpen,
@@ -79,12 +80,13 @@ export default function Sidebar({
           sidebarTouchStart.current = null;
         }}
       >
-        <div className="chat-sidebar-brand">
-          <span className="rhynia-leaf"><span /></span>
-          <strong>Zuhali</strong>
+        <div className="chat-sidebar-brand" style={{ padding: '6px 11px 12px', display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.4px' }}>
+            Rhynia
+          </span>
         </div>
 
-        <nav className="chat-sidebar-actions">
+        <nav className="chat-sidebar-actions" style={{ marginTop: '4px' }}>
           <button
             type="button"
             onClick={() => {
@@ -92,7 +94,7 @@ export default function Sidebar({
               onClose();
             }}
           >
-            <SquarePen size={18} />
+            <AiSparkIcon size={18} />
             <span>New Chat</span>
           </button>
           <button
@@ -121,7 +123,7 @@ export default function Sidebar({
           />
         )}
 
-        <div className="chat-sidebar-section">
+        <div className="chat-sidebar-section" style={{ marginTop: '14px' }}>
           <div className="chat-sidebar-section-label">RECENT CHATS</div>
           <div className="chat-sidebar-recent">
             {filteredChats.length === 0 ? (

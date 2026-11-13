@@ -163,9 +163,13 @@ export default function LibraryScreen({ onClose }) {
     // Sync delete to backend disk
     if (target?.folderName) {
       try {
+        const token = localStorage.getItem('zuhali_token');
         await fetch(
-          `http://localhost:8000/api/v1/chat/project?project_name=${encodeURIComponent(target.folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
-          { method: 'DELETE' }
+          `/api/v1/chat/project?project_name=${encodeURIComponent(target.folderName)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
+          {
+            method: 'DELETE',
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          }
         );
       } catch (e) {}
     }
@@ -223,9 +227,21 @@ export default function LibraryScreen({ onClose }) {
 
     if (oldFolder && oldFolder !== newFolder) {
       try {
+        const token = localStorage.getItem('zuhali_token');
         await fetch(
-          `http://localhost:8000/api/v1/chat/project/rename?old_name=${encodeURIComponent(oldFolder)}&new_name=${encodeURIComponent(newFolder)}${user?.email ? `&user_email=${encodeURIComponent(user.email)}` : ''}`,
-          { method: 'PATCH' }
+          `/api/v1/chat/project/rename`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+              old_name: oldFolder,
+              new_name: newFolder,
+              user_email: user?.email || null
+            })
+          }
         );
       } catch (e) {}
     }
@@ -276,11 +292,10 @@ export default function LibraryScreen({ onClose }) {
         {currentView === 'main' && (
           <div className="library-page">
             <header className="library-sub-header">
-              <button className="library-back-btn" onClick={onClose} aria-label="Back to chat">
+              <button className="library-back-btn profile-back-button" onClick={onClose} aria-label="Back to chat">
                 <ArrowLeft size={20} />
               </button>
               <h2>Library</h2>
-              <div style={{ width: 38 }} />
             </header>
 
             {/* Search Library */}
@@ -294,55 +309,59 @@ export default function LibraryScreen({ onClose }) {
               />
             </div>
 
-            {/* 3 Main Action Cards */}
+            {/* Main Action Cards (Matching Settings Options) */}
             <div className="library-cards-list">
-              {/* Card 1: Upload */}
-              <button
-                type="button"
-                className="library-action-card"
-                onClick={() => { setCurrentView('upload'); setSearchTerm(''); }}
-              >
-                <div className="library-card-icon-box">
-                  <Upload size={22} />
-                </div>
-                <div className="library-card-info">
-                  <strong>Upload</strong>
-                  <span>Upload photos, videos and files</span>
-                </div>
-                <div className="library-card-arrow">›</div>
-              </button>
-
-              {/* Card 2: AI Generate */}
-              <button
-                type="button"
-                className="library-action-card"
-                onClick={() => { setCurrentView('ai-generate'); setSearchTerm(''); }}
-              >
-                <div className="library-card-icon-box">
-                  <Sparkles size={22} />
-                </div>
-                <div className="library-card-info">
-                  <strong>AI Generate</strong>
-                  <span>Generate photos, videos and files</span>
-                </div>
-                <div className="library-card-arrow">›</div>
-              </button>
-
-              {/* Card 3: Projects */}
-              <button
-                type="button"
-                className="library-action-card"
-                onClick={() => { setCurrentView('projects'); setSearchTerm(''); }}
-              >
-                <div className="library-card-icon-box">
-                  <FolderKanban size={22} />
-                </div>
-                <div className="library-card-info">
-                  <strong>Projects</strong>
-                  <span>Manage your project folders</span>
-                </div>
-                <div className="library-card-arrow">›</div>
-              </button>
+              {[
+                {
+                  id: 'upload',
+                  title: 'Upload',
+                  desc: 'Upload photos, videos and files',
+                  icon: Upload,
+                  view: 'upload'
+                },
+                {
+                  id: 'ai-generate',
+                  title: 'AI Generate',
+                  desc: 'Generate photos, videos and files',
+                  icon: Sparkles,
+                  view: 'ai-generate'
+                },
+                {
+                  id: 'projects',
+                  title: 'Projects',
+                  desc: 'Manage your project folders',
+                  icon: FolderKanban,
+                  view: 'projects'
+                }
+              ]
+                .filter(
+                  (item) =>
+                    !searchTerm ||
+                    item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.desc.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+                .map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="settings-option library-action-card"
+                      onClick={() => {
+                        setCurrentView(item.view);
+                        setSearchTerm('');
+                      }}
+                    >
+                      <span className="settings-option-icon library-card-icon-box">
+                        <Icon size={19} />
+                      </span>
+                      <span className="library-card-info">
+                        <strong>{item.title}</strong>
+                        <small>{item.desc}</small>
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
         )}

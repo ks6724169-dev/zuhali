@@ -190,16 +190,9 @@ async def login_endpoint(req: LoginRequest):
             }
             _USERS_DB[canonical_email] = user
 
-    # 1. Unregistered account check
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Yeh account registered nahi hai! Kripya pehle Sign Up karein aur naya account banayein."
-        )
-
-    # 2. Password check
-    password_hash = user.get("hashed_password")
-    if not password_hash or not verify_password(req.password, password_hash):
+    # 1 & 2. Uniform credential check (prevents account enumeration)
+    password_hash = user.get("hashed_password") if user else None
+    if not user or not password_hash or not verify_password(req.password, password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Galat email ya password! Kripya dobara check karein."
@@ -238,28 +231,16 @@ async def forgot_password_endpoint(req: ForgotPasswordRequest):
     display_email, canonical_email = normalize_email(req.email)
     user = _USERS_DB.get(canonical_email) or get_user_by_canonical(canonical_email)
     
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Is email par koi registered account nahi mila."
-        )
-
-    otp = generate_otp()
-    ok, msg = send_email_otp(display_email, otp, "password reset")
-    
-    if ok:
-        store_otp(canonical_email, otp)
-        store_otp(display_email, otp)
-
-    if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Password reset OTP delivery failed: {msg}"
-        )
+    if user:
+        otp = generate_otp()
+        ok, _msg = send_email_otp(display_email, otp, "password reset")
+        if ok:
+            store_otp(canonical_email, otp)
+            store_otp(display_email, otp)
 
     return {
         "status": "success",
-        "message": f"Password reset code {display_email} par bhej diya gaya hai.",
+        "message": f"Yadi {display_email} se koi account juda hai, to password reset code bhej diya gaya hai.",
         "email": display_email
     }
 

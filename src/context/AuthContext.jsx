@@ -3,14 +3,23 @@ import { authApi } from '../services/api';
 
 const AuthContext = createContext();
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
+function safeReadUser() {
+  try {
     const saved = localStorage.getItem('zuhali_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (e) {
+    try { localStorage.removeItem('zuhali_user'); } catch {}
+    return null;
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(() => safeReadUser());
 
   const [authView, setAuthView] = useState(() => {
-    return localStorage.getItem('zuhali_user') ? 'app' : 'login';
+    return safeReadUser() ? 'app' : 'login';
   });
 
   const [pendingEmail, setPendingEmail] = useState('');
